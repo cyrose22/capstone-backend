@@ -1,11 +1,13 @@
 import express from 'express';
-import mysql from 'mysql2';
+// import mysql from 'mysql2';
 import cors from 'cors';
 import bcrypt from 'bcrypt';
 import multer from 'multer';
 import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
+import pkg from 'pg';
+const { Pool } = pkg;
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -27,12 +29,18 @@ app.use(express.urlencoded({ extended: true, limit: '10mb' }));
 //   decimalNumbers: true,
 // });
 
-const db = mysql.createPool({
-  host: process.env.DB_HOST,
-  user: process.env.DB_USER,
-  password: process.env.DB_PASSWORD,
-  database: process.env.DB_NAME,
-  decimalNumbers: true,
+// const db = mysql.createPool({
+//   host: process.env.DB_HOST,
+//   user: process.env.DB_USER,
+//   password: process.env.DB_PASSWORD,
+//   database: process.env.DB_NAME,
+//   decimalNumbers: true,
+// });
+const db = new Pool({
+  connectionString: process.env.DATABASE_URL,
+  ssl: {
+    rejectUnauthorized: false
+  }
 });
 
 // Ensure uploads directory exists
@@ -49,35 +57,82 @@ if (!fs.existsSync(uploadDir)) {
 let qrImagePath = ''; // Stores the latest QR image path
 
 // Register
+// app.post('/register', async (req, res) => {
+//   const { fullname, username, password, contact, role  } = req.body;
+
+//   try {
+//     const hashedPassword = await bcrypt.hash(password, 10);
+//     const sql = 'INSERT INTO users (fullname, username, password, role, contact) VALUES (?, ?, ?, ?, ?)';
+//     db.query(sql, [fullname, username, hashedPassword, role, contact], (err) => {
+//       if (err) return res.status(500).json({ message: 'Registration failed or duplicate username' });
+//       res.json({ message: 'Registration successful. Awaiting approval.' });
+//     });
+//   } catch {
+//     res.status(500).json({ message: 'Server error during registration' });
+//   }
+// });
 app.post('/register', async (req, res) => {
-  const { fullname, username, password, contact, role  } = req.body;
+  const { fullname, username, password, contact, role } = req.body;
 
   try {
     const hashedPassword = await bcrypt.hash(password, 10);
-    const sql = 'INSERT INTO users (fullname, username, password, role, contact) VALUES (?, ?, ?, ?, ?)';
-    db.query(sql, [fullname, username, hashedPassword, role, contact], (err) => {
-      if (err) return res.status(500).json({ message: 'Registration failed or duplicate username' });
-      res.json({ message: 'Registration successful. Awaiting approval.' });
-    });
-  } catch {
-    res.status(500).json({ message: 'Server error during registration' });
+
+    await db.query(
+      `INSERT INTO users (fullname, username, password, role, contact)
+       VALUES ($1, $2, $3, $4, $5)`,
+      [fullname, username, hashedPassword, role, contact]
+    );
+
+    res.json({ message: 'Registration successful. Awaiting approval.' });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ message: 'Registration failed or duplicate username' });
   }
 });
 
-
 // Login
-app.post('/login', (req, res) => {
+// app.post('/login', (req, res) => {
+//   const { username, password } = req.body;
+//   const sql = 'SELECT * FROM users WHERE username = ?';
+
+//   db.query(sql, [username], async (err, result) => {
+//     if (err) return res.status(500).json({ message: 'DB error' });
+//     if (result.length === 0) return res.status(401).json({ message: 'Invalid credentials' });
+
+//     const user = result[0];
+//     const match = await bcrypt.compare(password, user.password);
+
+//     if (!match) return res.status(401).json({ message: 'Invalid credentials' });
+
+//     res.json({
+//       message: 'Login successful',
+//       role: user.role,
+//       username: user.username,
+//       fullname: user.fullname,
+//       id: user.id,
+//       contact: user.contact
+//     });
+//   });
+// });
+app.post('/login', async (req, res) => {
   const { username, password } = req.body;
-  const sql = 'SELECT * FROM users WHERE username = ?';
 
-  db.query(sql, [username], async (err, result) => {
-    if (err) return res.status(500).json({ message: 'DB error' });
-    if (result.length === 0) return res.status(401).json({ message: 'Invalid credentials' });
+  try {
+    const result = await db.query(
+      'SELECT * FROM users WHERE username = $1',
+      [username]
+    );
 
-    const user = result[0];
+    if (result.rows.length === 0) {
+      return res.status(401).json({ message: 'Invalid credentials' });
+    }
+
+    const user = result.rows[0];
     const match = await bcrypt.compare(password, user.password);
 
-    if (!match) return res.status(401).json({ message: 'Invalid credentials' });
+    if (!match) {
+      return res.status(401).json({ message: 'Invalid credentials' });
+    }
 
     res.json({
       message: 'Login successful',
@@ -87,42 +142,100 @@ app.post('/login', (req, res) => {
       id: user.id,
       contact: user.contact
     });
-  });
-});
 
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ message: 'DB error' });
+  }
+});
 // GET all users (including contact)
 // inside your async route
+// app.get('/users', async (req, res) => {
+//   try {
+//     const [rows] = await db.promise().query(`
+//       SELECT id, fullname, username, role, contact
+//       FROM users
+//     `);
+//     res.json(rows);
+//   } catch (err) {
+//     console.error('Error fetching users:', err);
+//     res.status(500).json({ message: 'Failed to fetch users' });
+//   }
+// });
 app.get('/users', async (req, res) => {
   try {
-    const [rows] = await db.promise().query(`
+    const result = await db.query(`
       SELECT id, fullname, username, role, contact
       FROM users
     `);
-    res.json(rows);
+
+    res.json(result.rows);
   } catch (err) {
-    console.error('Error fetching users:', err);
+    console.error(err);
     res.status(500).json({ message: 'Failed to fetch users' });
   }
 });
 
-app.put('/users/:id/role', (req, res) => {
+// app.put('/users/:id/role', (req, res) => {
+//   const { id } = req.params;
+//   const { role } = req.body;
+//   db.query('UPDATE users SET role = ? WHERE id = ?', [role, id], (err) => {
+//     if (err) return res.status(500).json({ message: 'Database error' });
+//     res.json({ message: 'Role updated successfully' });
+//   });
+// });
+app.put('/users/:id/role', async (req, res) => {
   const { id } = req.params;
   const { role } = req.body;
-  db.query('UPDATE users SET role = ? WHERE id = ?', [role, id], (err) => {
-    if (err) return res.status(500).json({ message: 'Database error' });
+
+  try {
+    await db.query(
+      'UPDATE users SET role = $1 WHERE id = $2',
+      [role, id]
+    );
+
     res.json({ message: 'Role updated successfully' });
-  });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ message: 'Database error' });
+  }
 });
-
-app.delete('/users/:id', (req, res) => {
+// app.delete('/users/:id', (req, res) => {
+//   const { id } = req.params;
+//   db.query('DELETE FROM users WHERE id = ?', [id], (err) => {
+//     if (err) return res.status(500).json({ message: 'Database error' });
+//     res.json({ message: 'User deleted successfully' });
+//   });
+// });
+app.delete('/users/:id', async (req, res) => {
   const { id } = req.params;
-  db.query('DELETE FROM users WHERE id = ?', [id], (err) => {
-    if (err) return res.status(500).json({ message: 'Database error' });
-    res.json({ message: 'User deleted successfully' });
-  });
-});
 
-app.put('/users/:id/contact', (req, res) => {
+  try {
+    await db.query(
+      'DELETE FROM users WHERE id = $1',
+      [id]
+    );
+
+    res.json({ message: 'User deleted successfully' });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ message: 'Database error' });
+  }
+});
+// app.put('/users/:id/contact', (req, res) => {
+//   const { id } = req.params;
+//   const { contact } = req.body;
+
+//   if (!contact || contact.trim() === '') {
+//     return res.status(400).json({ message: 'Contact number is required' });
+//   }
+
+//   db.query('UPDATE users SET contact = ? WHERE id = ?', [contact, id], (err) => {
+//     if (err) return res.status(500).json({ message: 'Failed to update contact' });
+//     res.json({ message: 'Contact updated successfully' });
+//   });
+// });
+app.put('/users/:id/contact', async (req, res) => {
   const { id } = req.params;
   const { contact } = req.body;
 
@@ -130,25 +243,49 @@ app.put('/users/:id/contact', (req, res) => {
     return res.status(400).json({ message: 'Contact number is required' });
   }
 
-  db.query('UPDATE users SET contact = ? WHERE id = ?', [contact, id], (err) => {
-    if (err) return res.status(500).json({ message: 'Failed to update contact' });
-    res.json({ message: 'Contact updated successfully' });
-  });
-});
+  try {
+    await db.query(
+      'UPDATE users SET contact = $1 WHERE id = $2',
+      [contact, id]
+    );
 
+    res.json({ message: 'Contact updated successfully' });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ message: 'Failed to update contact' });
+  }
+});
 // GET /users/:id - Fetch user details
-app.get('/users/:id', (req, res) => {
+// app.get('/users/:id', (req, res) => {
+//   const { id } = req.params;
+
+//   const sql = 'SELECT id, fullname, username, role, contact FROM users WHERE id = ?';
+//   db.query(sql, [id], (err, results) => {
+//     if (err) return res.status(500).json({ message: 'Database error' });
+//     if (results.length === 0) return res.status(404).json({ message: 'User not found' });
+
+//     res.json(results[0]);
+//   });
+// });
+app.get('/users/:id', async (req, res) => {
   const { id } = req.params;
 
-  const sql = 'SELECT id, fullname, username, role, contact FROM users WHERE id = ?';
-  db.query(sql, [id], (err, results) => {
-    if (err) return res.status(500).json({ message: 'Database error' });
-    if (results.length === 0) return res.status(404).json({ message: 'User not found' });
+  try {
+    const result = await db.query(
+      'SELECT id, fullname, username, role, contact FROM users WHERE id = $1',
+      [id]
+    );
 
-    res.json(results[0]);
-  });
+    if (result.rows.length === 0) {
+      return res.status(404).json({ message: 'User not found' });
+    }
+
+    res.json(result.rows[0]);
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ message: 'Database error' });
+  }
 });
-
 // Product management
 app.post('/products', async (req, res) => {
   const { name, category, variants, image } = req.body;
