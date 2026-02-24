@@ -1223,3 +1223,73 @@ app.get("/make-admin/:username", async (req, res) => {
     res.status(500).json({ message: "Failed to promote user" });
   }
 });
+
+app.get('/init-db', async (req, res) => {
+  try {
+    await db.query(`
+      CREATE TABLE IF NOT EXISTS users (
+        id SERIAL PRIMARY KEY,
+        fullname TEXT NOT NULL,
+        username TEXT UNIQUE NOT NULL,
+        password TEXT NOT NULL,
+        role TEXT DEFAULT 'user',
+        contact TEXT
+      );
+    `);
+
+    await db.query(`
+      CREATE TABLE IF NOT EXISTS products (
+        id SERIAL PRIMARY KEY,
+        name TEXT NOT NULL,
+        category TEXT,
+        image TEXT
+      );
+    `);
+
+    await db.query(`
+      CREATE TABLE IF NOT EXISTS product_variants (
+        id SERIAL PRIMARY KEY,
+        product_id INTEGER REFERENCES products(id) ON DELETE CASCADE,
+        variant_name TEXT,
+        price NUMERIC,
+        quantity INTEGER,
+        image TEXT
+      );
+    `);
+
+    await db.query(`
+      CREATE TABLE IF NOT EXISTS sales (
+        id SERIAL PRIMARY KEY,
+        user_id INTEGER REFERENCES users(id),
+        total NUMERIC,
+        status TEXT,
+        customer_name TEXT,
+        contact TEXT,
+        payment_method TEXT,
+        receipt_url TEXT,
+        cancel_description TEXT,
+        cancelled_by INTEGER,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+      );
+    `);
+
+    await db.query(`
+      CREATE TABLE IF NOT EXISTS sale_items (
+        id SERIAL PRIMARY KEY,
+        sale_id INTEGER REFERENCES sales(id) ON DELETE CASCADE,
+        product_id INTEGER REFERENCES products(id),
+        variant_id INTEGER REFERENCES product_variants(id),
+        quantity INTEGER,
+        price NUMERIC,
+        variant_name TEXT,
+        variant_image TEXT
+      );
+    `);
+
+    res.json({ message: "Database initialized successfully" });
+
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: "Failed to initialize database" });
+  }
+});
