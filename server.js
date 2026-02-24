@@ -287,50 +287,134 @@ app.get('/users/:id', async (req, res) => {
   }
 });
 // Product management
+// app.post('/products', async (req, res) => {
+//   const { name, category, variants, image } = req.body;
+
+//   try {
+//     // 1️⃣ Insert main product
+//     const [result] = await db.promise().query(
+//       'INSERT INTO products (name, category, image) VALUES (?, ?, ?)',
+//       [name, category, image || null]
+//     );
+//     const productId = result.insertId;
+
+//     // 2️⃣ Insert variants safely
+//     if (Array.isArray(variants)) {
+//       for (const v of variants) {
+//         const variantName = v.variantName; // frontend key
+//         const price = v.price;
+//         const quantity = v.qty; // frontend key
+//         const variantImage = Array.isArray(v.images) && v.images.length > 0 ? v.images[0] : null;
+
+//         if (!variantName || price == null || quantity == null) {
+//           continue;
+//         }
+
+//         try {
+//           const [insertVariant] = await db.promise().query(
+//             'INSERT INTO product_variants (product_id, variant_name, price, quantity, image) VALUES (?, ?, ?, ?, ?)',
+//             [productId, variantName, price, quantity, variantImage]
+//           );
+//         } catch (variantErr) {
+//           console.error('Failed to insert variant:', variantErr);
+//         }
+//       }
+//     }
+
+//     res.json({ message: 'Product added', id: productId });
+//   } catch (err) {
+//     console.error('Failed to add product:', err);
+//     res.status(500).json({ message: 'Failed to add product' });
+//   }
+// });
+
 app.post('/products', async (req, res) => {
-  const { name, category, variants, image } = req.body;
+  const { name, category, image, variants } = req.body;
+
+  if (!name) return res.status(400).json({ message: 'Product name is required' });
 
   try {
-    // 1️⃣ Insert main product
-    const [result] = await db.promise().query(
-      'INSERT INTO products (name, category, image) VALUES (?, ?, ?)',
+    const productResult = await db.query(
+      'INSERT INTO products (name, category, image) VALUES ($1, $2, $3) RETURNING id',
       [name, category, image || null]
     );
-    const productId = result.insertId;
 
-    // 2️⃣ Insert variants safely
+    const productId = productResult.rows[0].id;
+
     if (Array.isArray(variants)) {
       for (const v of variants) {
-        const variantName = v.variantName; // frontend key
-        const price = v.price;
-        const quantity = v.qty; // frontend key
-        const variantImage = Array.isArray(v.images) && v.images.length > 0 ? v.images[0] : null;
-
-        if (!variantName || price == null || quantity == null) {
-          continue;
-        }
-
-        try {
-          const [insertVariant] = await db.promise().query(
-            'INSERT INTO product_variants (product_id, variant_name, price, quantity, image) VALUES (?, ?, ?, ?, ?)',
-            [productId, variantName, price, quantity, variantImage]
-          );
-        } catch (variantErr) {
-          console.error('Failed to insert variant:', variantErr);
-        }
+        await db.query(
+          'INSERT INTO product_variants (product_id, variant_name, price, quantity, image) VALUES ($1, $2, $3, $4, $5)',
+          [
+            productId,
+            v.variantName || 'Original',
+            parseFloat(v.price) || 0,
+            parseInt(v.qty, 10) || 0,
+            v.images?.[0] || null
+          ]
+        );
       }
     }
 
     res.json({ message: 'Product added', id: productId });
+
   } catch (err) {
-    console.error('Failed to add product:', err);
+    console.error(err);
     res.status(500).json({ message: 'Failed to add product' });
   }
 });
 
+// app.get('/products', async (req, res) => {
+//   try {
+//     const sql = `
+//       SELECT 
+//         p.id AS product_id,
+//         p.name AS product_name,
+//         p.category,
+//         p.image AS product_image,
+//         v.id AS variant_id,
+//         v.variant_name,
+//         v.price,
+//         v.quantity,
+//         v.image AS variant_image
+//       FROM products p
+//       LEFT JOIN product_variants v ON p.id = v.product_id
+//     `;
+
+//     const [rows] = await db.promise().query(sql);
+
+//     const productsMap = {};
+//     rows.forEach(row => {
+//       if (!productsMap[row.product_id]) {
+//         productsMap[row.product_id] = {
+//           id: row.product_id,
+//           name: row.product_name,
+//           category: row.category,
+//           image: row.product_image,
+//           variants: []
+//         };
+//       }
+//       if (row.variant_id) {
+//         productsMap[row.product_id].variants.push({
+//           id: row.variant_id,
+//           variant_name: row.variant_name,
+//           price: row.price,
+//           quantity: row.quantity,
+//           image: row.variant_image
+//         });
+//       }
+//     });
+
+//     res.json(Object.values(productsMap));
+//   } catch (err) {
+//     console.error('Fetch products error:', err);
+//     res.status(500).json({ message: 'Failed to fetch products' });
+//   }
+// });
+
 app.get('/products', async (req, res) => {
   try {
-    const sql = `
+    const result = await db.query(`
       SELECT 
         p.id AS product_id,
         p.name AS product_name,
@@ -343,11 +427,11 @@ app.get('/products', async (req, res) => {
         v.image AS variant_image
       FROM products p
       LEFT JOIN product_variants v ON p.id = v.product_id
-    `;
+    `);
 
-    const [rows] = await db.promise().query(sql);
-
+    const rows = result.rows;
     const productsMap = {};
+
     rows.forEach(row => {
       if (!productsMap[row.product_id]) {
         productsMap[row.product_id] = {
@@ -358,6 +442,7 @@ app.get('/products', async (req, res) => {
           variants: []
         };
       }
+
       if (row.variant_id) {
         productsMap[row.product_id].variants.push({
           id: row.variant_id,
@@ -370,8 +455,9 @@ app.get('/products', async (req, res) => {
     });
 
     res.json(Object.values(productsMap));
+
   } catch (err) {
-    console.error('Fetch products error:', err);
+    console.error(err);
     res.status(500).json({ message: 'Failed to fetch products' });
   }
 });
@@ -468,33 +554,136 @@ app.put('/products/:id', async (req, res) => {
 app.delete('/products/:id', async (req, res) => {
   const { id } = req.params;
 
-  const connection = await db.promise().getConnection();
   try {
-    await connection.beginTransaction();
+    await db.query('BEGIN');
 
-    // Delete variants first
-    await connection.query('DELETE FROM product_variants WHERE product_id = ?', [id]);
+    await db.query(
+      'DELETE FROM product_variants WHERE product_id = $1',
+      [id]
+    );
 
-    // Delete product
-    const [result] = await connection.query('DELETE FROM products WHERE id = ?', [id]);
+    const result = await db.query(
+      'DELETE FROM products WHERE id = $1 RETURNING id',
+      [id]
+    );
 
-    await connection.commit();
-    connection.release();
+    await db.query('COMMIT');
 
-    if (result.affectedRows === 0) {
+    if (result.rowCount === 0) {
       return res.status(404).json({ message: 'Product not found' });
     }
 
     res.json({ message: 'Product deleted successfully' });
+
   } catch (err) {
-    await connection.rollback();
-    connection.release();
+    await db.query('ROLLBACK');
     console.error(err);
     res.status(500).json({ message: 'Failed to delete product' });
   }
 });
 
 // Create a sale
+// app.post('/sales', async (req, res) => {
+//   const {
+//     userId,
+//     items,
+//     status = 'processing',
+//     customer_name = '',
+//     contact = '',
+//     payment_method,
+//     receipt_url = ''
+//   } = req.body;
+
+//   try {
+//     // Calculate total
+//     let total = 0;
+//     items.forEach(item => total += item.price * item.quantity);
+
+//     // Insert sale
+//     const [saleResult] = await db.promise().query(
+//       'INSERT INTO sales (user_id, total, status, customer_name, contact, payment_method, receipt_url) VALUES (?, ?, ?, ?, ?, ?, ?)',
+//       [userId, total, status, customer_name, contact, payment_method, receipt_url]
+//     );
+//     const saleId = saleResult.insertId;
+
+//     // Insert sale items
+//     for (const i of items) {
+//       let variantName = i.variantName || null;
+//       let variantImage = i.variantImage || null;
+//       let variantId = i.variantId || null;
+
+//       if (!variantId) {
+//         // Try to get first variant if product has variants
+//         const [variants] = await db.promise().query(
+//           'SELECT id, variant_name, image FROM product_variants WHERE product_id = ? ORDER BY id ASC LIMIT 1',
+//           [i.productId]
+//         );
+
+//         if (variants.length > 0) {
+//           variantId = variants[0].id;
+//           variantName = variantName || variants[0].variant_name;
+//           variantImage = variantImage || (variants[0].image
+//             ? (variants[0].image.startsWith('http') || variants[0].image.startsWith('data:image/')
+//                 ? variants[0].image
+//                 : `https://capstone-backend-kiax.onrender.com/uploads/${variants[0].image}`)
+//             : null);
+//         } else {
+//           // No variants, fallback to product
+//           const [rows] = await db.promise().query(
+//             'SELECT name, image FROM products WHERE id = ?',
+//             [i.productId]
+//           );
+//           if (rows.length > 0) {
+//             variantName = variantName || rows[0].name;
+//             variantImage = variantImage || (rows[0].image
+//               ? (rows[0].image.startsWith('http') || rows[0].image.startsWith('data:image/')
+//                   ? rows[0].image
+//                   : `https://capstone-backend-kiax.onrender.com/uploads/${rows[0].image}`)
+//               : null);
+//           }
+//         }
+//       } else {
+//         // Variant exists: fetch from variant table if missing
+//         if (!variantName || !variantImage) {
+//           const [rows] = await db.promise().query(
+//             'SELECT variant_name, image FROM product_variants WHERE id = ?',
+//             [variantId]
+//           );
+//           if (rows.length > 0) {
+//             variantName = variantName || rows[0].variant_name;
+//             variantImage = variantImage || (rows[0].image
+//               ? (rows[0].image.startsWith('http') || rows[0].image.startsWith('data:image/')
+//                   ? rows[0].image
+//                   : `https://capstone-backend-kiax.onrender.com/uploads/${rows[0].image}`)
+//               : null);
+//           }
+//         }
+//       }
+
+//       // Insert into sale_items
+//       await db.promise().query(
+//         `INSERT INTO sale_items 
+//         (sale_id, product_id, variant_id, quantity, price, variant_name, variant_image) 
+//         VALUES (?, ?, ?, ?, ?, ?, ?)`,
+//         [saleId, i.productId, variantId, i.quantity, i.price, variantName, variantImage]
+//       );
+
+//       // Deduct inventory if variant
+//       if (variantId) {
+//         await db.promise().query(
+//           'UPDATE product_variants SET quantity = quantity - ? WHERE id = ?',
+//           [i.quantity, variantId]
+//         );
+//       }
+//     }
+
+//     res.json({ message: 'Sale completed', saleId });
+//   } catch (err) {
+//     console.error(err);
+//     res.status(500).json({ message: 'Error creating sale' });
+//   }
+// });
+
 app.post('/sales', async (req, res) => {
   const {
     userId,
@@ -507,126 +696,137 @@ app.post('/sales', async (req, res) => {
   } = req.body;
 
   try {
-    // Calculate total
+    await db.query('BEGIN');
+
     let total = 0;
     items.forEach(item => total += item.price * item.quantity);
 
-    // Insert sale
-    const [saleResult] = await db.promise().query(
-      'INSERT INTO sales (user_id, total, status, customer_name, contact, payment_method, receipt_url) VALUES (?, ?, ?, ?, ?, ?, ?)',
+    const saleResult = await db.query(
+      `INSERT INTO sales 
+      (user_id, total, status, customer_name, contact, payment_method, receipt_url) 
+      VALUES ($1,$2,$3,$4,$5,$6,$7)
+      RETURNING id`,
       [userId, total, status, customer_name, contact, payment_method, receipt_url]
     );
-    const saleId = saleResult.insertId;
 
-    // Insert sale items
+    const saleId = saleResult.rows[0].id;
+
     for (const i of items) {
-      let variantName = i.variantName || null;
-      let variantImage = i.variantImage || null;
-      let variantId = i.variantId || null;
-
-      if (!variantId) {
-        // Try to get first variant if product has variants
-        const [variants] = await db.promise().query(
-          'SELECT id, variant_name, image FROM product_variants WHERE product_id = ? ORDER BY id ASC LIMIT 1',
-          [i.productId]
-        );
-
-        if (variants.length > 0) {
-          variantId = variants[0].id;
-          variantName = variantName || variants[0].variant_name;
-          variantImage = variantImage || (variants[0].image
-            ? (variants[0].image.startsWith('http') || variants[0].image.startsWith('data:image/')
-                ? variants[0].image
-                : `https://capstone-backend-kiax.onrender.com/uploads/${variants[0].image}`)
-            : null);
-        } else {
-          // No variants, fallback to product
-          const [rows] = await db.promise().query(
-            'SELECT name, image FROM products WHERE id = ?',
-            [i.productId]
-          );
-          if (rows.length > 0) {
-            variantName = variantName || rows[0].name;
-            variantImage = variantImage || (rows[0].image
-              ? (rows[0].image.startsWith('http') || rows[0].image.startsWith('data:image/')
-                  ? rows[0].image
-                  : `https://capstone-backend-kiax.onrender.com/uploads/${rows[0].image}`)
-              : null);
-          }
-        }
-      } else {
-        // Variant exists: fetch from variant table if missing
-        if (!variantName || !variantImage) {
-          const [rows] = await db.promise().query(
-            'SELECT variant_name, image FROM product_variants WHERE id = ?',
-            [variantId]
-          );
-          if (rows.length > 0) {
-            variantName = variantName || rows[0].variant_name;
-            variantImage = variantImage || (rows[0].image
-              ? (rows[0].image.startsWith('http') || rows[0].image.startsWith('data:image/')
-                  ? rows[0].image
-                  : `https://capstone-backend-kiax.onrender.com/uploads/${rows[0].image}`)
-              : null);
-          }
-        }
-      }
-
-      // Insert into sale_items
-      await db.promise().query(
-        `INSERT INTO sale_items 
-        (sale_id, product_id, variant_id, quantity, price, variant_name, variant_image) 
-        VALUES (?, ?, ?, ?, ?, ?, ?)`,
-        [saleId, i.productId, variantId, i.quantity, i.price, variantName, variantImage]
+      await db.query(
+        `INSERT INTO sale_items
+        (sale_id, product_id, variant_id, quantity, price, variant_name, variant_image)
+        VALUES ($1,$2,$3,$4,$5,$6,$7)`,
+        [
+          saleId,
+          i.productId,
+          i.variantId || null,
+          i.quantity,
+          i.price,
+          i.variantName || null,
+          i.variantImage || null
+        ]
       );
 
-      // Deduct inventory if variant
-      if (variantId) {
-        await db.promise().query(
-          'UPDATE product_variants SET quantity = quantity - ? WHERE id = ?',
-          [i.quantity, variantId]
+      if (i.variantId) {
+        await db.query(
+          `UPDATE product_variants 
+           SET quantity = quantity - $1 
+           WHERE id = $2`,
+          [i.quantity, i.variantId]
         );
       }
     }
 
+    await db.query('COMMIT');
+
     res.json({ message: 'Sale completed', saleId });
+
   } catch (err) {
+    await db.query('ROLLBACK');
     console.error(err);
     res.status(500).json({ message: 'Error creating sale' });
   }
 });
 
 // Get sales (all or by user)
+// app.get('/sales', async (req, res) => {
+//   const { userId } = req.query;
+//   try {
+//     let salesSql = 'SELECT id, total, created_at, status, contact, payment_method, receipt_url, customer_name, cancel_description FROM sales';
+//     const params = [];
+//     if (userId) {
+//       salesSql += ' WHERE user_id = ?';
+//       params.push(userId);
+//     }
+//     salesSql += ' ORDER BY created_at DESC';
+
+//     const [sales] = await db.promise().query(salesSql, params);
+
+//     const enrichedSales = await Promise.all(
+//       sales.map(async sale => {
+//         const [items] = await db.promise().query(`
+//           SELECT si.quantity, si.price, si.variant_name, si.variant_image,
+//                 p.name AS product_name, p.image AS product_image,
+//                 v.id AS variant_id, v.variant_name AS db_variant_name, v.image AS db_variant_image
+//           FROM sale_items si
+//           JOIN products p ON si.product_id = p.id
+//           LEFT JOIN product_variants v ON si.variant_id = v.id
+//           WHERE si.sale_id = ?
+//         `, [sale.id]);
+
+//         return { ...sale, items };
+//       })
+//     );
+
+//     res.json(enrichedSales);
+//   } catch (err) {
+//     console.error(err);
+//     res.status(500).json({ message: 'Failed to fetch sales' });
+//   }
+// });
 app.get('/sales', async (req, res) => {
   const { userId } = req.query;
+
   try {
-    let salesSql = 'SELECT id, total, created_at, status, contact, payment_method, receipt_url, customer_name, cancel_description FROM sales';
+    let query = `
+      SELECT id, total, created_at, status, contact,
+             payment_method, receipt_url,
+             customer_name, cancel_description
+      FROM sales
+    `;
+
     const params = [];
+
     if (userId) {
-      salesSql += ' WHERE user_id = ?';
+      query += ' WHERE user_id = $1';
       params.push(userId);
     }
-    salesSql += ' ORDER BY created_at DESC';
 
-    const [sales] = await db.promise().query(salesSql, params);
+    query += ' ORDER BY created_at DESC';
+
+    const salesResult = await db.query(query, params);
+    const sales = salesResult.rows;
 
     const enrichedSales = await Promise.all(
       sales.map(async sale => {
-        const [items] = await db.promise().query(`
+        const itemsResult = await db.query(`
           SELECT si.quantity, si.price, si.variant_name, si.variant_image,
-                p.name AS product_name, p.image AS product_image,
-                v.id AS variant_id, v.variant_name AS db_variant_name, v.image AS db_variant_image
+                 p.name AS product_name, p.image AS product_image,
+                 v.id AS variant_id,
+                 v.variant_name AS db_variant_name,
+                 v.image AS db_variant_image
           FROM sale_items si
           JOIN products p ON si.product_id = p.id
           LEFT JOIN product_variants v ON si.variant_id = v.id
-          WHERE si.sale_id = ?
+          WHERE si.sale_id = $1
         `, [sale.id]);
 
-        return { ...sale, items };
+        return { ...sale, items: itemsResult.rows };
       })
     );
 
     res.json(enrichedSales);
+
   } catch (err) {
     console.error(err);
     res.status(500).json({ message: 'Failed to fetch sales' });
@@ -634,37 +834,79 @@ app.get('/sales', async (req, res) => {
 });
 
 // Get sales by user ID
+// app.get('/sales/user/:id', async (req, res) => {
+//   const userId = req.params.id;
+//   try {
+//     const [sales] = await db.promise().query(`
+//       SELECT 
+//         s.id, s.total, s.created_at, s.status, s.payment_method,
+//         s.receipt_url, s.customer_name, s.contact, s.cancel_description,
+//         s.cancelled_by, u.fullname AS cancelled_by_name, u.role AS cancelled_by_role
+//       FROM sales s
+//       LEFT JOIN users u ON s.cancelled_by = u.id
+//       WHERE s.user_id = ?
+//       ORDER BY s.created_at DESC
+//     `, [userId]);
+
+//     const enrichedSales = await Promise.all(
+//       sales.map(async sale => {
+//         const [items] = await db.promise().query(`
+//           SELECT si.quantity, si.price, si.variant_name, si.variant_image,
+//                 p.name AS product_name, p.image AS product_image,
+//                 v.id AS variant_id, v.variant_name AS db_variant_name, v.image AS db_variant_image
+//           FROM sale_items si
+//           JOIN products p ON si.product_id = p.id
+//           LEFT JOIN product_variants v ON si.variant_id = v.id
+//           WHERE si.sale_id = ?
+//         `, [sale.id]);
+
+//         return { ...sale, items };
+//       })
+//     );
+
+//     res.json(enrichedSales);
+//   } catch (err) {
+//     console.error(err);
+//     res.status(500).json({ message: 'Failed to fetch sales' });
+//   }
+// });
+
 app.get('/sales/user/:id', async (req, res) => {
   const userId = req.params.id;
+
   try {
-    const [sales] = await db.promise().query(`
+    const salesResult = await db.query(`
       SELECT 
         s.id, s.total, s.created_at, s.status, s.payment_method,
-        s.receipt_url, s.customer_name, s.contact, s.cancel_description,
-        s.cancelled_by, u.fullname AS cancelled_by_name, u.role AS cancelled_by_role
+        s.receipt_url, s.customer_name, s.contact,
+        s.cancel_description, s.cancelled_by,
+        u.fullname AS cancelled_by_name,
+        u.role AS cancelled_by_role
       FROM sales s
       LEFT JOIN users u ON s.cancelled_by = u.id
-      WHERE s.user_id = ?
+      WHERE s.user_id = $1
       ORDER BY s.created_at DESC
     `, [userId]);
 
+    const sales = salesResult.rows;
+
     const enrichedSales = await Promise.all(
       sales.map(async sale => {
-        const [items] = await db.promise().query(`
+        const itemsResult = await db.query(`
           SELECT si.quantity, si.price, si.variant_name, si.variant_image,
-                p.name AS product_name, p.image AS product_image,
-                v.id AS variant_id, v.variant_name AS db_variant_name, v.image AS db_variant_image
+                 p.name AS product_name,
+                 p.image AS product_image
           FROM sale_items si
           JOIN products p ON si.product_id = p.id
-          LEFT JOIN product_variants v ON si.variant_id = v.id
-          WHERE si.sale_id = ?
+          WHERE si.sale_id = $1
         `, [sale.id]);
 
-        return { ...sale, items };
+        return { ...sale, items: itemsResult.rows };
       })
     );
 
     res.json(enrichedSales);
+
   } catch (err) {
     console.error(err);
     res.status(500).json({ message: 'Failed to fetch sales' });
@@ -672,38 +914,68 @@ app.get('/sales/user/:id', async (req, res) => {
 });
 
 // Update sale status
+// app.put('/sales/:id/status', async (req, res) => {
+//   const { id } = req.params;
+//   const { status, reason = null, cancelled_by = null } = req.body;
+
+//   try {
+//     if (reason) {
+//       await db.promise().query(
+//         'UPDATE sales SET status = ?, cancel_description = ?, cancelled_by = ? WHERE id = ?',
+//         [status, reason, cancelled_by, id]
+//       );
+//     } else {
+//       await db.promise().query(
+//         'UPDATE sales SET status = ? WHERE id = ?',
+//         [status, id]
+//       );
+//     }
+
+//     if (cancelled_by) {
+//       const [user] = await db.promise().query(
+//         'SELECT fullname, role FROM users WHERE id = ?',
+//         [cancelled_by]
+//       );
+//       if (user.length > 0) {
+//         return res.json({
+//           message: 'Status updated successfully',
+//           cancelled_by_name: user[0].fullname,
+//           cancelled_by_role: user[0].role
+//         });
+//       }
+//     }
+
+//     res.json({ message: 'Status updated successfully' });
+//   } catch (err) {
+//     console.error(err);
+//     res.status(500).json({ message: 'Failed to update status' });
+//   }
+// });
 app.put('/sales/:id/status', async (req, res) => {
   const { id } = req.params;
   const { status, reason = null, cancelled_by = null } = req.body;
 
   try {
     if (reason) {
-      await db.promise().query(
-        'UPDATE sales SET status = ?, cancel_description = ?, cancelled_by = ? WHERE id = ?',
+      await db.query(
+        `UPDATE sales
+         SET status = $1,
+             cancel_description = $2,
+             cancelled_by = $3
+         WHERE id = $4`,
         [status, reason, cancelled_by, id]
       );
     } else {
-      await db.promise().query(
-        'UPDATE sales SET status = ? WHERE id = ?',
+      await db.query(
+        `UPDATE sales
+         SET status = $1
+         WHERE id = $2`,
         [status, id]
       );
     }
 
-    if (cancelled_by) {
-      const [user] = await db.promise().query(
-        'SELECT fullname, role FROM users WHERE id = ?',
-        [cancelled_by]
-      );
-      if (user.length > 0) {
-        return res.json({
-          message: 'Status updated successfully',
-          cancelled_by_name: user[0].fullname,
-          cancelled_by_role: user[0].role
-        });
-      }
-    }
-
     res.json({ message: 'Status updated successfully' });
+
   } catch (err) {
     console.error(err);
     res.status(500).json({ message: 'Failed to update status' });
@@ -711,22 +983,50 @@ app.put('/sales/:id/status', async (req, res) => {
 });
 
 // PUT /users/:id/password
+// app.put('/users/:id/password', async (req, res) => {
+//   const { id } = req.params;
+//   const { password } = req.body;
+
+//   if (!password || password.trim().length < 6) {
+//     return res.status(400).json({ message: 'Password must be at least 6 characters long' });
+//   }
+
+//   try {
+//     const hashed = await bcrypt.hash(password, 10);
+//     db.query('UPDATE users SET password = ? WHERE id = ?', [hashed, id], (err) => {
+//       if (err) return res.status(500).json({ message: 'Failed to update password' });
+//       res.json({ success: true, message: 'Password updated successfully' });
+//     });
+//   } catch (error) {
+//     console.error('Hashing error:', error);
+//     res.status(500).json({ message: 'Internal server error' });
+//   }
+// });
 app.put('/users/:id/password', async (req, res) => {
   const { id } = req.params;
   const { password } = req.body;
 
   if (!password || password.trim().length < 6) {
-    return res.status(400).json({ message: 'Password must be at least 6 characters long' });
+    return res.status(400).json({
+      message: 'Password must be at least 6 characters long'
+    });
   }
 
   try {
     const hashed = await bcrypt.hash(password, 10);
-    db.query('UPDATE users SET password = ? WHERE id = ?', [hashed, id], (err) => {
-      if (err) return res.status(500).json({ message: 'Failed to update password' });
-      res.json({ success: true, message: 'Password updated successfully' });
+
+    await db.query(
+      'UPDATE users SET password = $1 WHERE id = $2',
+      [hashed, id]
+    );
+
+    res.json({
+      success: true,
+      message: 'Password updated successfully'
     });
+
   } catch (error) {
-    console.error('Hashing error:', error);
+    console.error('Password update error:', error);
     res.status(500).json({ message: 'Internal server error' });
   }
 });
@@ -812,41 +1112,87 @@ app.post('/admin/upload-qr', upload.single('qrImage'), (req, res) => {
 });
 
 // Simple FAQ chatbot
-app.post('/chatbot', (req, res) => {
-  const { message, userName } = req.body; // ✅ frontend should send username too
-  const lower = message.toLowerCase();
+// app.post('/chatbot', (req, res) => {
+//   const { message, userName } = req.body; // ✅ frontend should send username too
+//   const lower = message.toLowerCase();
+
+//   let reply = "Sorry, I don’t understand. Can you rephrase?";
+
+//   if (lower.includes("hello") || lower.includes("hi") || lower.includes("home")) {
+//     reply = `👋 Hi ${userName || "there"}! How can I help you today?`;
+//   } else if (lower.includes("price") || lower.includes("cost") || lower.includes("products")) {
+//     // ✅ Fetch products from DB
+//     db.query("SELECT name, category FROM products", (err, results) => {
+//       if (err) {
+//         console.error("❌ Query error:", err);
+//         return res.json({ reply: "⚠️ Error fetching product list." });
+//       }
+
+//       if (results.length > 0) {
+//         let productList = results
+//           .map(p => `🛒 ${p.name} – ₱${p.category}`)
+//           .join("\n");
+//         return res.json({ reply: productList });
+//       } else {
+//         return res.json({ reply: "⚠️ No products found in the database." });
+//       }
+//     });
+//     return; // ⬅️ stop execution here
+//   } else if (lower.includes("payment")) {
+//     reply = "💳 We accept Cash on Delivery or via GCash.";
+//   } else if (lower.includes("contact")) {
+//     reply = "☎️ You can reach us at 0912-345-6789 or support@yourshop.com.";
+//   } else if (lower.includes("location") || lower.includes("located")) {
+//     reply = "We are located at Liloan, Cebu";
+//   }
+
+//   res.json({ reply });
+// });
+app.post('/chatbot', async (req, res) => {
+  const { message, userName } = req.body;
+  const lower = message?.toLowerCase() || "";
 
   let reply = "Sorry, I don’t understand. Can you rephrase?";
 
-  if (lower.includes("hello") || lower.includes("hi") || lower.includes("home")) {
-    reply = `👋 Hi ${userName || "there"}! How can I help you today?`;
-  } else if (lower.includes("price") || lower.includes("cost") || lower.includes("products")) {
-    // ✅ Fetch products from DB
-    db.query("SELECT name, category FROM products", (err, results) => {
-      if (err) {
-        console.error("❌ Query error:", err);
-        return res.json({ reply: "⚠️ Error fetching product list." });
-      }
+  try {
 
-      if (results.length > 0) {
-        let productList = results
-          .map(p => `🛒 ${p.name} – ₱${p.category}`)
+    if (lower.includes("hello") || lower.includes("hi") || lower.includes("home")) {
+      reply = `👋 Hi ${userName || "there"}! How can I help you today?`;
+
+    } else if (lower.includes("price") || lower.includes("cost") || lower.includes("products")) {
+
+      const result = await db.query(
+        "SELECT name, category FROM products"
+      );
+
+      const products = result.rows;
+
+      if (products.length > 0) {
+        const productList = products
+          .map(p => `🛒 ${p.name} – ${p.category}`)
           .join("\n");
-        return res.json({ reply: productList });
-      } else {
-        return res.json({ reply: "⚠️ No products found in the database." });
-      }
-    });
-    return; // ⬅️ stop execution here
-  } else if (lower.includes("payment")) {
-    reply = "💳 We accept Cash on Delivery or via GCash.";
-  } else if (lower.includes("contact")) {
-    reply = "☎️ You can reach us at 0912-345-6789 or support@yourshop.com.";
-  } else if (lower.includes("location") || lower.includes("located")) {
-    reply = "We are located at Liloan, Cebu";
-  }
 
-  res.json({ reply });
+        reply = productList;
+      } else {
+        reply = "⚠️ No products found in the database.";
+      }
+
+    } else if (lower.includes("payment")) {
+      reply = "💳 We accept Cash on Delivery or via GCash.";
+
+    } else if (lower.includes("contact")) {
+      reply = "☎️ You can reach us at 0912-345-6789 or support@yourshop.com.";
+
+    } else if (lower.includes("location") || lower.includes("located")) {
+      reply = "We are located at Liloan, Cebu";
+    }
+
+    res.json({ reply });
+
+  } catch (err) {
+    console.error("Chatbot error:", err);
+    res.status(500).json({ reply: "⚠️ Server error." });
+  }
 });
 
 // Serve uploaded images
