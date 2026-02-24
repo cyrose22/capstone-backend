@@ -71,6 +71,25 @@ let qrImagePath = ''; // Stores the latest QR image path
 //     res.status(500).json({ message: 'Server error during registration' });
 //   }
 // });
+app.get('/create-users-table', async (req, res) => {
+  try {
+    await db.query(`
+      CREATE TABLE IF NOT EXISTS users (
+        id SERIAL PRIMARY KEY,
+        fullname VARCHAR(255),
+        username VARCHAR(255) UNIQUE,
+        password TEXT,
+        role VARCHAR(50),
+        contact VARCHAR(50)
+      );
+    `);
+    res.send("Users table created successfully");
+  } catch (err) {
+    console.error(err);
+    res.status(500).send(err.message);
+  }
+});
+
 app.post('/register', async (req, res) => {
   const { fullname, username, password, contact, role } = req.body;
 
