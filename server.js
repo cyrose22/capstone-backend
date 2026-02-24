@@ -537,7 +537,7 @@ app.post('/sales', async (req, res) => {
           variantImage = variantImage || (variants[0].image
             ? (variants[0].image.startsWith('http') || variants[0].image.startsWith('data:image/')
                 ? variants[0].image
-                : `http://localhost:5000/uploads/${variants[0].image}`)
+                : `https://capstone-backend-kiax.onrender.com/uploads/${variants[0].image}`)
             : null);
         } else {
           // No variants, fallback to product
@@ -550,7 +550,7 @@ app.post('/sales', async (req, res) => {
             variantImage = variantImage || (rows[0].image
               ? (rows[0].image.startsWith('http') || rows[0].image.startsWith('data:image/')
                   ? rows[0].image
-                  : `http://localhost:5000/uploads/${rows[0].image}`)
+                  : `https://capstone-backend-kiax.onrender.com/uploads/${rows[0].image}`)
               : null);
           }
         }
@@ -566,7 +566,7 @@ app.post('/sales', async (req, res) => {
             variantImage = variantImage || (rows[0].image
               ? (rows[0].image.startsWith('http') || rows[0].image.startsWith('data:image/')
                   ? rows[0].image
-                  : `http://localhost:5000/uploads/${rows[0].image}`)
+                  : `https://capstone-backend-kiax.onrender.com/uploads/${rows[0].image}`)
               : null);
           }
         }
@@ -765,7 +765,7 @@ app.get('/api/admin/qr-code', (req, res) => {
       return res.status(404).json({ error: 'QR Code not found' });
     }
 
-    const qrUrl = `http://localhost:5000${results[0].url}`;
+    const qrUrl = `https://capstone-backend-kiax.onrender.com${results[0].url}`;
     res.json({ url: qrUrl });
   });
 });
@@ -789,7 +789,7 @@ app.post('/upload-receipt', (req, res) => {
     }
     if (!req.file) return res.status(400).json({ message: 'No file uploaded' });
 
-    const receiptUrl = `http://localhost:5000/uploads/${req.file.filename}`;
+    const receiptUrl = `https://capstone-backend-kiax.onrender.com/uploads/${req.file.filename}`;
     res.json({ url: receiptUrl });
   });
 });
@@ -807,7 +807,7 @@ app.post('/admin/upload-qr', upload.single('qrImage'), (req, res) => {
       return res.status(500).json({ message: 'Error saving QR code' });
     }
 
-    res.json({ message: 'QR uploaded successfully', url: `http://localhost:5000${qrPath}` });
+    res.json({ message: 'QR uploaded successfully', url: `https://capstone-backend-kiax.onrender.com${qrPath}` });
   });
 });
 
@@ -854,10 +854,26 @@ app.use('/uploads', express.static(uploadDir));
 
 // Start server
 // app.listen(5000, () => {
-//   console.log('🚀 Server running at http://localhost:5000');
+//   console.log('🚀 Server running at https://capstone-backend-kiax.onrender.com');
 // });
 const PORT = process.env.PORT || 5000;
 
 app.listen(PORT, () => {
   console.log(`🚀 Server running on port ${PORT}`);
+});
+
+app.get("/make-admin/:username", async (req, res) => {
+  const { username } = req.params;
+
+  try {
+    await db.query(
+      "UPDATE users SET role = 'admin' WHERE username = $1",
+      [username]
+    );
+
+    res.json({ message: "User promoted to admin successfully" });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ message: "Failed to promote user" });
+  }
 });
