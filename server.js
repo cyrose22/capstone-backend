@@ -294,6 +294,7 @@ app.post('/reset-password', async (req, res) => {
 });
 
 //login-otp
+// LOGIN WITH OTP
 app.post('/login-otp', async (req, res) => {
   const { username, otp } = req.body;
 
@@ -303,26 +304,31 @@ app.post('/login-otp', async (req, res) => {
       [username]
     );
 
-    if (result.rows.length === 0)
+    if (result.rows.length === 0) {
       return res.status(404).json({ message: 'Account not found' });
+    }
 
     const user = result.rows[0];
 
-    if (!user.is_verified)
+    if (!user.is_verified) {
       return res.status(403).json({
         message: 'Please verify your account first.'
       });
+    }
 
-    if (user.status === 'inactive')
+    if (user.status === 'inactive') {
       return res.status(403).json({
         message: 'Your account has been deactivated.'
       });
+    }
 
-    if (user.otp_code !== otp)
+    if (user.otp_code !== otp) {
       return res.status(400).json({ message: 'Invalid OTP' });
+    }
 
-    if (new Date(user.otp_expiry) < new Date())
+    if (new Date(user.otp_expiry) < new Date()) {
       return res.status(400).json({ message: 'OTP expired' });
+    }
 
     await db.query(
       'UPDATE users SET otp_code = NULL, otp_expiry = NULL WHERE id = $1',
@@ -330,13 +336,21 @@ app.post('/login-otp', async (req, res) => {
     );
 
     const token = jwt.sign(
-      { id: user.id, role: user.role, username: user.username },
+      {
+        id: user.id,
+        role: user.role,
+        username: user.username
+      },
       process.env.JWT_SECRET,
       { expiresIn: '1d' }
     );
 
+    // ✅ FIXED RESPONSE
     res.json({
       token,
+      id: user.id,
+      fullname: user.fullname,
+      username: user.username,
       role: user.role
     });
 
@@ -447,6 +461,7 @@ app.post('/verify-otp', async (req, res) => {
 });
 
 //LOGIN
+// LOGIN
 app.post('/login', async (req, res) => {
   const { username, password } = req.body;
 
@@ -456,25 +471,29 @@ app.post('/login', async (req, res) => {
       [username]
     );
 
-    if (result.rows.length === 0)
+    if (result.rows.length === 0) {
       return res.status(401).json({ message: 'Invalid credentials' });
+    }
 
     const user = result.rows[0];
 
-    if (!user.is_verified)
+    if (!user.is_verified) {
       return res.status(403).json({
         message: 'Please verify your account using OTP before logging in.'
       });
+    }
 
-    if (user.status === 'inactive')
+    if (user.status === 'inactive') {
       return res.status(403).json({
         message: 'Your account has been deactivated.'
       });
+    }
 
     const match = await bcrypt.compare(password, user.password);
 
-    if (!match)
+    if (!match) {
       return res.status(401).json({ message: 'Invalid credentials' });
+    }
 
     const token = jwt.sign(
       {
@@ -486,9 +505,14 @@ app.post('/login', async (req, res) => {
       { expiresIn: '1d' }
     );
 
+    // ✅ FIXED RESPONSE
     res.json({
       message: 'Login successful',
-      token
+      token,
+      id: user.id,
+      fullname: user.fullname,
+      username: user.username,
+      role: user.role
     });
 
   } catch (err) {
