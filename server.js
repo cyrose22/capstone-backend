@@ -8,6 +8,7 @@ import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import fetch from 'node-fetch';
+import nodemailer from 'nodemailer';
 import pkg from 'pg';
 const { Pool } = pkg;
 
@@ -17,6 +18,7 @@ const __dirname = path.dirname(__filename);
 const SEMAPHORE_API_KEY = process.env.SEMAPHORE_API_KEY;
 const SENDER_ID = process.env.SEMAPHORE_SENDER_ID || 'SMSINFO';
 
+//SMS
 async function sendSms(to, message) {
   const url = 'https://api.semaphore.co/api/v4/messages';
 
@@ -70,6 +72,29 @@ if (!fs.existsSync(uploadDir)) {
 
 let qrImagePath = ''; // Stores the latest QR image path
 
+//EMAIL OTP
+const transporter = nodemailer.createTransport({
+  service: 'gmail',
+  auth: {
+    user: process.env.EMAIL_USER,
+    pass: process.env.EMAIL_PASS
+  }
+});
+
+async function sendOtpEmail(to, otp) {
+  await transporter.sendMail({
+    from: `"Oscar D'Great Pet Supplies" <${process.env.EMAIL_USER}>`,
+    to,
+    subject: "Your OTP Code",
+    html: `
+      <h2>Email Verification</h2>
+      <p>Your OTP code is:</p>
+      <h1>${otp}</h1>
+      <p>This expires in 10 minutes.</p>
+    `
+  });
+}
+
 //REGISTER
 app.post('/register', async (req, res) => {
   const {
@@ -121,9 +146,9 @@ app.post('/register', async (req, res) => {
 
     // Send SMS
     try {
-      await sendSms(contact, `Your OTP code is ${otp}. Do not share this code.`);
-    } catch (smsError) {
-      console.error("SMS sending failed:", smsError);
+      await sendOtpEmail(username, otp);
+    } catch (emailError) {
+      console.error("Email sending failed:", emailError);
     }
 
     res.json({ message: 'OTP sent successfully' });
