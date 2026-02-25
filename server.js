@@ -89,6 +89,93 @@ async function sendOtpEmail(to, otp) {
   });
 }
 
+//SEND-OTP 
+app.post('/send-login-otp', async (req, res) => {
+  const { username } = req.body;
+
+  try {
+    const result = await db.query(
+      'SELECT id FROM users WHERE username = $1',
+      [username]
+    );
+
+    if (result.rows.length === 0) {
+      return res.status(404).json({
+        message: 'Account not found. Please register.'
+      });
+    }
+
+    const otp = Math.floor(100000 + Math.random() * 900000).toString();
+    const expiry = new Date(Date.now() + 10 * 60 * 1000);
+
+    await db.query(
+      'UPDATE users SET otp_code = $1, otp_expiry = $2 WHERE username = $3',
+      [otp, expiry, username]
+    );
+
+    await sendOtpEmail(username, otp);
+
+    res.json({ message: 'OTP sent successfully' });
+
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ message: 'Failed to send OTP' });
+  }
+});
+
+//login-otp
+app.post('/login-otp', async (req, res) => {
+  const { username, otp } = req.body;
+
+  try {
+    const result = await db.query(
+      'SELECT * FROM users WHERE username = $1',
+      [username]
+    );
+
+    if (result.rows.length === 0)
+      return res.status(404).json({ message: 'Account not found' });
+
+    const user = result.rows[0];
+
+    if (!user.is_verified)
+      return res.status(403).json({
+        message: 'Please verify your account first.'
+      });
+
+    if (user.status === 'inactive')
+      return res.status(403).json({
+        message: 'Your account has been deactivated.'
+      });
+
+    if (user.otp_code !== otp)
+      return res.status(400).json({ message: 'Invalid OTP' });
+
+    if (new Date(user.otp_expiry) < new Date())
+      return res.status(400).json({ message: 'OTP expired' });
+
+    await db.query(
+      'UPDATE users SET otp_code = NULL, otp_expiry = NULL WHERE id = $1',
+      [user.id]
+    );
+
+    const token = jwt.sign(
+      { id: user.id, role: user.role, username: user.username },
+      process.env.JWT_SECRET,
+      { expiresIn: '1d' }
+    );
+
+    res.json({
+      token,
+      role: user.role
+    });
+
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ message: 'OTP login failed' });
+  }
+});
+
 //REGISTER
 app.post('/register', async (req, res) => {
   const {
