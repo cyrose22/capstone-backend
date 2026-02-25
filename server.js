@@ -21,17 +21,24 @@ async function sendSms(to, message) {
   const url = 'https://api.semaphore.co/api/v4/messages';
 
   const params = new URLSearchParams();
-  params.append('apikey', SEMAPHORE_API_KEY);
+  params.append('apikey', process.env.SEMAPHORE_API_KEY);
   params.append('number', to);
   params.append('message', message);
-  params.append('sendername', SENDER_ID);
+  params.append('sendername', process.env.SEMAPHORE_SENDER_ID || 'SMSINFO');
 
   const response = await fetch(url, {
     method: 'POST',
     body: params
   });
 
-  return response.json();
+  const text = await response.text(); // 👈 read as text first
+
+  try {
+    return JSON.parse(text); // try parse if JSON
+  } catch {
+    console.log("SMS Response (not JSON):", text);
+    return text; // return raw text instead of crashing
+  }
 }
 
 const app = express();
@@ -113,10 +120,11 @@ app.post('/register', async (req, res) => {
     );
 
     // Send SMS
-    await sendSms(
-      contact,
-      `Your OTP code is ${otp}. It will expire in 10 minutes.`
-    );
+    try {
+      await sendSms(contact, `Your OTP code is ${otp}. Do not share this code.`);
+    } catch (smsError) {
+      console.error("SMS sending failed:", smsError);
+    }
 
     res.json({ message: 'OTP sent successfully' });
 
