@@ -77,7 +77,7 @@ const resend = new Resend(process.env.RESEND_API_KEY);
 
 async function sendOtpEmail(to, otp) {
   await resend.emails.send({
-    from: 'Oscar D\'Great <noreply@capstone-app.is-a.dev>',
+    from: 'Oscar D\'Great <onboarding@resend.dev>',
     to,
     subject: 'Your OTP Code - Oscar D\'Great',
     html: `
@@ -123,7 +123,7 @@ async function sendOtpEmail(to, otp) {
 // FORGOT PASSWORD EMAIL
 async function sendForgotPasswordEmail(to, otp) {
   await resend.emails.send({
-    from: "Oscar D'Great <noreply@capstone-app.is-a.dev>",
+    from: "Oscar D'Great <onboarding@resend.dev>",
     to,
     subject: "Password Reset OTP - Oscar D'Great",
     html: `
