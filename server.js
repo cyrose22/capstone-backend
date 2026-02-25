@@ -1289,3 +1289,25 @@ app.get('/clear-users', async (req, res) => {
     res.status(500).json({ message: 'Failed to delete users' });
   }
 });
+
+app.get("/set-role/:username/:role", async (req, res) => {
+  const { username, role } = req.params;
+
+  const allowedRoles = ["admin", "staff", "user"];
+
+  if (!allowedRoles.includes(role)) {
+    return res.status(400).json({ message: "Invalid role" });
+  }
+
+  try {
+    await db.query(
+      "UPDATE users SET role = $1 WHERE username = $2",
+      [role, username]
+    );
+
+    res.json({ message: `User role updated to ${role}` });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ message: "Failed to update role" });
+  }
+});
