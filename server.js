@@ -7,11 +7,32 @@ import multer from 'multer';
 import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
+import fetch from 'node-fetch';
 import pkg from 'pg';
 const { Pool } = pkg;
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
+
+const SEMAPHORE_API_KEY = process.env.SEMAPHORE_API_KEY;
+const SENDER_ID = process.env.SEMAPHORE_SENDER_ID || 'SMSINFO';
+
+async function sendSms(to, message) {
+  const url = 'https://api.semaphore.co/api/v4/messages';
+
+  const params = new URLSearchParams();
+  params.append('apikey', SEMAPHORE_API_KEY);
+  params.append('number', to);
+  params.append('message', message);
+  params.append('sendername', SENDER_ID);
+
+  const response = await fetch(url, {
+    method: 'POST',
+    body: params
+  });
+
+  return response.json();
+}
 
 const app = express();
 app.use(cors());
@@ -42,6 +63,7 @@ if (!fs.existsSync(uploadDir)) {
 
 let qrImagePath = ''; // Stores the latest QR image path
 
+//REGISTER
 app.post('/register', async (req, res) => {
   const {
     fullname,
@@ -57,22 +79,32 @@ app.post('/register', async (req, res) => {
   } = req.body;
 
   try {
+    // Check if username already exists
+    const existingUser = await db.query(
+      'SELECT id FROM users WHERE username = $1',
+      [username]
+    );
+
+    if (existingUser.rows.length > 0) {
+      return res.status(400).json({ message: 'Username already exists' });
+    }
+
     const hashedPassword = await bcrypt.hash(password, 10);
 
     const otp = Math.floor(100000 + Math.random() * 900000).toString();
-    const expiry = new Date(Date.now() + 10 * 60 * 1000); // 10 mins
+    const expiry = new Date(Date.now() + 10 * 60 * 1000); // 10 minutes
 
     await db.query(
       `INSERT INTO users 
       (fullname, username, password, role, contact,
        province, municipality, barangay, street, block,
        otp_code, otp_expiry, is_verified)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,false)`,
+      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,false)`,
       [
         fullname,
         username,
         hashedPassword,
-        role,
+        role || 'user',
         contact,
         province,
         municipality,
@@ -84,16 +116,21 @@ app.post('/register', async (req, res) => {
       ]
     );
 
-    console.log("Generated OTP:", otp); // replace with email/SMS later
+    // Send SMS
+    await sendSms(
+      contact,
+      `Your OTP code is ${otp}. It will expire in 10 minutes.`
+    );
 
-    res.json({ message: "OTP sent. Please verify your account." });
+    res.json({ message: 'OTP sent successfully' });
 
   } catch (err) {
-    console.error(err);
+    console.error('Registration error:', err);
     res.status(500).json({ message: 'Registration failed' });
   }
 });
 
+//VERIFY OTP
 app.post('/verify-otp', async (req, res) => {
   const { username, otp } = req.body;
 
@@ -129,6 +166,7 @@ app.post('/verify-otp', async (req, res) => {
   }
 });
 
+//LOGIN
 app.post('/login', async (req, res) => {
   const { username, password } = req.body;
 
@@ -138,31 +176,26 @@ app.post('/login', async (req, res) => {
       [username]
     );
 
-    if (result.rows.length === 0) {
+    if (result.rows.length === 0)
       return res.status(401).json({ message: 'Invalid credentials' });
-    }
 
     const user = result.rows[0];
 
-    if (!user.is_verified) {
+    if (!user.is_verified)
       return res.status(403).json({
         message: 'Please verify your account using OTP before logging in.'
       });
-    }
 
-    if (user.status === 'inactive') {
+    if (user.status === 'inactive')
       return res.status(403).json({
-        message: 'Your account has been deactivated. Please contact admin.'
+        message: 'Your account has been deactivated.'
       });
-    }
 
     const match = await bcrypt.compare(password, user.password);
 
-    if (!match) {
+    if (!match)
       return res.status(401).json({ message: 'Invalid credentials' });
-    }
 
-    // 🔐 CREATE TOKEN
     const token = jwt.sign(
       {
         id: user.id,
@@ -175,27 +208,16 @@ app.post('/login', async (req, res) => {
 
     res.json({
       message: 'Login successful',
-      token, // ✅ send token
-      user: {
-        id: user.id,
-        role: user.role,
-        username: user.username,
-        fullname: user.fullname,
-        contact: user.contact,
-        province: user.province,
-        municipality: user.municipality,
-        barangay: user.barangay,
-        street: user.street,
-        block: user.block
-      }
+      token
     });
 
   } catch (err) {
-    console.error('Login error:', err);
-    res.status(500).json({ message: 'Server error during login' });
+    console.error(err);
+    res.status(500).json({ message: 'Login failed' });
   }
 });
 
+//USERS
 app.get('/users', async (req, res) => {
   try {
     const result = await db.query(`
@@ -370,33 +392,33 @@ app.get('/products', async (req, res) => {
   }
 });
 
-app.post('/products', async (req, res) => {
-  const { name, category, image, variants } = req.body;
+// app.post('/products', async (req, res) => {
+//   const { name, category, image, variants } = req.body;
 
-  if (!name) return res.status(400).json({ message: 'Product name is required' });
+//   if (!name) return res.status(400).json({ message: 'Product name is required' });
 
-  try {
-    const [result] = await db.promise().query(
-      'INSERT INTO products (name, category, image) VALUES (?, ?, ?)',
-      [name, category, image || null]
-    );
-    const productId = result.insertId;
+//   try {
+//     const [result] = await db.promise().query(
+//       'INSERT INTO products (name, category, image) VALUES (?, ?, ?)',
+//       [name, category, image || null]
+//     );
+//     const productId = result.insertId;
 
-    if (Array.isArray(variants)) {
-      for (const v of variants) {
-        await db.promise().query(
-          'INSERT INTO product_variants (product_id, variant_name, price, quantity, image) VALUES (?, ?, ?, ?, ?)',
-          [productId, v.variant_name, v.price, v.quantity, v.image || null]
-        );
-      }
-    }
+//     if (Array.isArray(variants)) {
+//       for (const v of variants) {
+//         await db.promise().query(
+//           'INSERT INTO product_variants (product_id, variant_name, price, quantity, image) VALUES (?, ?, ?, ?, ?)',
+//           [productId, v.variant_name, v.price, v.quantity, v.image || null]
+//         );
+//       }
+//     }
 
-    res.json({ message: 'Product added', id: productId });
-  } catch (err) {
-    console.error(err);
-    res.status(500).json({ message: 'Failed to add product' });
-  }
-});
+//     res.json({ message: 'Product added', id: productId });
+//   } catch (err) {
+//     console.error(err);
+//     res.status(500).json({ message: 'Failed to add product' });
+//   }
+// });
 
 app.put('/products/:id', async (req, res) => {
   const { id } = req.params;
