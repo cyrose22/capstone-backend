@@ -729,58 +729,60 @@ app.put('/products/:id', async (req, res) => {
   const { name, category, image, variants } = req.body;
 
   try {
-    // 1. Update main product
-    await db.promise().query(
-      'UPDATE products SET name = ?, category = ?, image = ? WHERE id = ?',
+    await db.query(
+      'UPDATE products SET name = $1, category = $2, image = $3 WHERE id = $4',
       [name, category, image || null, id]
     );
 
-    // 2. Fetch existing variants
-    const [existingVariants] = await db.promise().query(
-      'SELECT id FROM product_variants WHERE product_id = ?',
+    const existingVariantsResult = await db.query(
+      'SELECT id FROM product_variants WHERE product_id = $1',
       [id]
     );
-    const existingIds = existingVariants.map(v => v.id);
 
-    // 3. Handle variants
+    const existingIds = existingVariantsResult.rows.map(v => v.id);
     const sentIds = [];
+
     if (Array.isArray(variants)) {
       for (const v of variants) {
-        // Ensure variant_name is not null
         const variantName = v.variantName || 'Original';
         const price = parseFloat(v.price) || 0;
         const qty = parseInt(v.qty, 10) || 0;
-        const variantImage = v.images && v.images[0] ? v.images[0] : null;
+        const variantImage = v.images?.[0] || null;
 
         if (v.id) {
-          // Update existing variant
-          await db.promise().query(
-            'UPDATE product_variants SET variant_name = ?, price = ?, quantity = ?, image = ? WHERE id = ?',
+          await db.query(
+            `UPDATE product_variants 
+             SET variant_name = $1, price = $2, quantity = $3, image = $4
+             WHERE id = $5`,
             [variantName, price, qty, variantImage, v.id]
           );
           sentIds.push(v.id);
         } else {
-          // Insert new variant
-          const [result] = await db.promise().query(
-            'INSERT INTO product_variants (product_id, variant_name, price, quantity, image) VALUES (?, ?, ?, ?, ?)',
+          const insertResult = await db.query(
+            `INSERT INTO product_variants
+             (product_id, variant_name, price, quantity, image)
+             VALUES ($1,$2,$3,$4,$5)
+             RETURNING id`,
             [id, variantName, price, qty, variantImage]
           );
-          sentIds.push(result.insertId);
+          sentIds.push(insertResult.rows[0].id);
         }
       }
     }
 
-    // 4. Delete variants that were removed in frontend
     const idsToDelete = existingIds.filter(eid => !sentIds.includes(eid));
+
     if (idsToDelete.length > 0) {
-      await db.promise().query(
-        `DELETE FROM product_variants WHERE id IN (${idsToDelete.join(',')})`
+      await db.query(
+        `DELETE FROM product_variants WHERE id = ANY($1::int[])`,
+        [idsToDelete]
       );
     }
 
     res.json({ message: 'Product updated successfully' });
+
   } catch (err) {
-    console.error(err);
+    console.error("UPDATE PRODUCT ERROR:", err);
     res.status(500).json({ message: 'Failed to update product' });
   }
 });
