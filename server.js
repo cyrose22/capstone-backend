@@ -73,9 +73,7 @@ app.post('/register', async (req, res) => {
     role,
     province,
     municipality,
-    barangay,
-    street,
-    block
+    barangay
   } = req.body;
 
   try {
@@ -96,21 +94,19 @@ app.post('/register', async (req, res) => {
 
     await db.query(
       `INSERT INTO users 
-      (fullname, username, password, role, contact,
-       province, municipality, barangay, street, block,
-       otp_code, otp_expiry, is_verified)
-      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,false)`,
+        (fullname, username, password, role, contact,
+        province, municipality, barangay,
+        otp_code, otp_expiry, is_verified)
+        VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,false)`,
       [
         fullname,
         username,
         hashedPassword,
-        role || 'user',
+        role,
         contact,
         province,
         municipality,
         barangay,
-        street,
-        block,
         otp,
         expiry
       ]
