@@ -77,14 +77,44 @@ const resend = new Resend(process.env.RESEND_API_KEY);
 
 async function sendOtpEmail(to, otp) {
   await resend.emails.send({
-    from: 'onboarding@resend.dev', // works immediately
+    from: 'Oscar D\'Great <onboarding@resend.dev>',
     to,
-    subject: 'Your OTP Code',
+    subject: 'Your OTP Code - Oscar D\'Great',
     html: `
-      <h2>Email Verification</h2>
-      <p>Your OTP code is:</p>
-      <h1>${otp}</h1>
-      <p>This expires in 10 minutes.</p>
+      <div style="font-family: Arial, sans-serif; background:#f4f4f4; padding:40px 0;">
+        <div style="max-width:500px; margin:auto; background:white; border-radius:12px; padding:30px; text-align:center; box-shadow:0 8px 25px rgba(0,0,0,0.1);">
+          
+          <h2 style="color:#ee4d2d; margin-bottom:10px;">Oscar D'Great</h2>
+          <p style="color:#777; margin-bottom:25px;">Pet Supplies Trading</p>
+
+          <h3 style="margin-bottom:15px;">Email Verification</h3>
+
+          <p style="color:#555; font-size:14px;">
+            Use the OTP below to complete your login.
+          </p>
+
+          <div style="
+            font-size:28px;
+            font-weight:bold;
+            letter-spacing:6px;
+            margin:20px 0;
+            color:#ee4d2d;
+          ">
+            ${otp}
+          </div>
+
+          <p style="font-size:13px; color:#999;">
+            This code will expire in 10 minutes.
+          </p>
+
+          <hr style="margin:25px 0; border:none; border-top:1px solid #eee;">
+
+          <p style="font-size:12px; color:#aaa;">
+            If you did not request this, please ignore this email.
+          </p>
+
+        </div>
+      </div>
     `
   });
 }
