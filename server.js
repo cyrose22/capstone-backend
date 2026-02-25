@@ -119,6 +119,53 @@ async function sendOtpEmail(to, otp) {
   });
 }
 
+//FORGOT PASSWORD
+// FORGOT PASSWORD EMAIL
+async function sendForgotPasswordEmail(to, otp) {
+  await resend.emails.send({
+    from: "Oscar D'Great <onboarding@resend.dev>",
+    to,
+    subject: "Password Reset OTP - Oscar D'Great",
+    html: `
+      <div style="font-family: Arial, sans-serif; background:#f4f4f4; padding:40px 0;">
+        <div style="max-width:500px; margin:auto; background:white; border-radius:12px; padding:30px; text-align:center; box-shadow:0 8px 25px rgba(0,0,0,0.1);">
+          
+          <h2 style="color:#ee4d2d; margin-bottom:10px;">Oscar D'Great</h2>
+          <p style="color:#777; margin-bottom:25px;">Pet Supplies Trading</p>
+
+          <h3 style="margin-bottom:15px;">Password Reset Request</h3>
+
+          <p style="color:#555; font-size:14px;">
+            We received a request to reset your password.
+            Use the OTP below to proceed with resetting your password.
+          </p>
+
+          <div style="
+            font-size:28px;
+            font-weight:bold;
+            letter-spacing:6px;
+            margin:20px 0;
+            color:#ee4d2d;
+          ">
+            ${otp}
+          </div>
+
+          <p style="font-size:13px; color:#999;">
+            This code will expire in 10 minutes.
+          </p>
+
+          <hr style="margin:25px 0; border:none; border-top:1px solid #eee;">
+
+          <p style="font-size:12px; color:#aaa;">
+            If you did not request a password reset, please ignore this email.
+          </p>
+
+        </div>
+      </div>
+    `
+  });
+}
+
 //SEND-OTP 
 app.post('/send-login-otp', async (req, res) => {
   const { username } = req.body;
@@ -150,6 +197,99 @@ app.post('/send-login-otp', async (req, res) => {
   } catch (err) {
     console.error(err);
     res.status(500).json({ message: 'Failed to send OTP' });
+  }
+});
+
+// FORGOT PASSWORD - SEND OTP
+app.post('/forgot-password', async (req, res) => {
+  const { email } = req.body;
+
+  try {
+    const result = await db.query(
+      'SELECT id FROM users WHERE username = $1',
+      [email]
+    );
+
+    if (result.rows.length === 0) {
+      return res.status(404).json({
+        message: 'Account not found'
+      });
+    }
+
+    const otp = Math.floor(100000 + Math.random() * 900000).toString();
+    const expiry = new Date(Date.now() + 10 * 60 * 1000);
+
+    await db.query(
+      'UPDATE users SET otp_code = $1, otp_expiry = $2 WHERE username = $3',
+      [otp, expiry, email]
+    );
+
+    await sendForgotPasswordEmail(email, otp);
+
+    res.json({ message: 'Password reset OTP sent successfully' });
+
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ message: 'Failed to send reset OTP' });
+  }
+});
+
+// VERIFY FORGOT PASSWORD OTP
+app.post('/verify-forgot-otp', async (req, res) => {
+  const { email, otp } = req.body;
+
+  try {
+    const result = await db.query(
+      'SELECT otp_code, otp_expiry FROM users WHERE username = $1',
+      [email]
+    );
+
+    if (result.rows.length === 0)
+      return res.status(404).json({ message: 'Account not found' });
+
+    const user = result.rows[0];
+
+    if (user.otp_code !== otp)
+      return res.status(400).json({ message: 'Invalid OTP' });
+
+    if (new Date(user.otp_expiry) < new Date())
+      return res.status(400).json({ message: 'OTP expired' });
+
+    res.json({ message: 'OTP verified successfully' });
+
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ message: 'Verification failed' });
+  }
+});
+
+// RESET PASSWORD
+app.post('/reset-password', async (req, res) => {
+  const { email, newPassword } = req.body;
+
+  if (!newPassword || newPassword.length < 6) {
+    return res.status(400).json({
+      message: 'Password must be at least 6 characters'
+    });
+  }
+
+  try {
+    const hashed = await bcrypt.hash(newPassword, 10);
+
+    await db.query(
+      `UPDATE users 
+       SET password = $1,
+           otp_code = NULL,
+           otp_expiry = NULL
+       WHERE username = $2`,
+      [hashed, email]
+    );
+
+    res.json({ message: 'Password reset successful' });
+
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ message: 'Password reset failed' });
   }
 });
 
