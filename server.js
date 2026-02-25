@@ -998,3 +998,13 @@ app.get('/reset-users', async (req, res) => {
     res.status(500).json({ error: 'Failed to drop users table' });
   }
 });
+
+app.get('/clear-users', async (req, res) => {
+  try {
+    await db.query('DELETE FROM users');
+    res.json({ message: 'All users deleted successfully' });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ message: 'Failed to delete users' });
+  }
+});
