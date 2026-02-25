@@ -8,7 +8,7 @@ import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import fetch from 'node-fetch';
-import nodemailer from 'nodemailer';
+import { Resend } from 'resend';
 import pkg from 'pg';
 const { Pool } = pkg;
 
@@ -73,19 +73,13 @@ if (!fs.existsSync(uploadDir)) {
 let qrImagePath = ''; // Stores the latest QR image path
 
 //EMAIL OTP
-const transporter = nodemailer.createTransport({
-  service: 'gmail',
-  auth: {
-    user: process.env.EMAIL_USER,
-    pass: process.env.EMAIL_PASS
-  }
-});
+const resend = new Resend(process.env.RESEND_API_KEY);
 
 async function sendOtpEmail(to, otp) {
-  await transporter.sendMail({
-    from: `"Oscar D'Great Pet Supplies" <${process.env.EMAIL_USER}>`,
+  await resend.emails.send({
+    from: 'onboarding@resend.dev', // works immediately
     to,
-    subject: "Your OTP Code",
+    subject: 'Your OTP Code',
     html: `
       <h2>Email Verification</h2>
       <p>Your OTP code is:</p>
