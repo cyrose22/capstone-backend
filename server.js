@@ -961,3 +961,13 @@ app.get('/init-db', async (req, res) => {
     res.status(500).json({ error: "Failed to initialize database" });
   }
 });
+
+app.get('/reset-users', async (req, res) => {
+  try {
+    await db.query('DROP TABLE IF EXISTS users CASCADE');
+    res.json({ message: 'Users table dropped successfully' });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: 'Failed to drop users table' });
+  }
+});
