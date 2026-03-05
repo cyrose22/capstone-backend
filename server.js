@@ -1313,3 +1313,27 @@ app.get("/set-role/:username/:role", async (req, res) => {
     res.status(500).json({ message: "Failed to update role" });
   }
 });
+
+// NEW: Admin - count new orders since a timestamp
+app.get("/admin/new-orders-count", async (req, res) => {
+  try {
+    const since = req.query.since; // ISO string
+    // default: if no "since", count today's orders (or last 24h)
+    const sinceDate = since ? new Date(since) : new Date(Date.now() - 24 * 60 * 60 * 1000);
+
+    // You can change the status filter depending on your logic:
+    // processing = new orders
+    const result = await db.query(
+      `SELECT COUNT(*)::int AS count
+       FROM sales
+       WHERE created_at > $1
+         AND status = 'processing'`,
+      [sinceDate]
+    );
+
+    res.json({ count: result.rows[0].count });
+  } catch (err) {
+    console.error("new-orders-count error:", err);
+    res.status(500).json({ message: "Failed to count new orders" });
+  }
+});
