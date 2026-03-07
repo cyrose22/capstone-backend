@@ -351,9 +351,9 @@ app.post('/login-otp', async (req, res) => {
       id: user.id,
       fullname: user.fullname,
       username: user.username,
+      contact: user.contact,
       role: user.role
     });
-
   } catch (err) {
     console.error(err);
     res.status(500).json({ message: 'OTP login failed' });
@@ -512,6 +512,7 @@ app.post('/login', async (req, res) => {
       id: user.id,
       fullname: user.fullname,
       username: user.username,
+      contact: user.contact,
       role: user.role
     });
 
