@@ -166,6 +166,14 @@ async function sendForgotPasswordEmail(to, otp) {
   });
 }
 
+async function createNotification({ userId, saleId, status, message }) {
+  await db.query(
+    `INSERT INTO notifications (user_id, sale_id, status, message, is_read)
+     VALUES ($1, $2, $3, $4, false)`,
+    [userId, saleId, status, message]
+  );
+}
+
 //SEND-OTP 
 app.post('/send-login-otp', async (req, res) => {
   const { username } = req.body;
@@ -847,6 +855,13 @@ app.post('/sales', async (req, res) => {
 
     const saleId = saleResult.rows[0].id;
 
+    await createNotification({
+      userId,
+      saleId,
+      status: 'processing',
+      message: `Order #${saleId} has been placed successfully and is now being processed.`
+    });
+
     for (const i of items) {
       await db.query(
         `INSERT INTO sale_items
@@ -983,6 +998,17 @@ app.put('/sales/:id/status', async (req, res) => {
   const { status, reason = null, cancelled_by = null } = req.body;
 
   try {
+    const saleResult = await db.query(
+      'SELECT id, user_id, status FROM sales WHERE id = $1',
+      [id]
+    );
+
+    if (saleResult.rows.length === 0) {
+      return res.status(404).json({ message: 'Sale not found' });
+    }
+
+    const sale = saleResult.rows[0];
+
     if (reason) {
       await db.query(
         `UPDATE sales
@@ -1001,11 +1027,120 @@ app.put('/sales/:id/status', async (req, res) => {
       );
     }
 
+    let message = '';
+
+    if (status === 'processing') {
+      message = `Order #${id} is now being prepared.`;
+    } else if (status === 'to receive') {
+      message = `Order #${id} is ready to receive. Please prepare for pickup or delivery.`;
+    } else if (status === 'completed') {
+      message = `Order #${id} has been completed. Thank you for ordering!`;
+    } else if (status === 'cancelled') {
+      message = `Order #${id} was cancelled${reason ? `: ${reason}` : '.'}`;
+    } else {
+      message = `Order #${id} status changed to ${status}.`;
+    }
+
+    await createNotification({
+      userId: sale.user_id,
+      saleId: sale.id,
+      status,
+      message
+    });
+
     res.json({ message: 'Status updated successfully' });
 
   } catch (err) {
     console.error(err);
     res.status(500).json({ message: 'Failed to update status' });
+  }
+});
+
+// Get notifications for a user
+app.get('/notifications/user/:id', async (req, res) => {
+  const { id } = req.params;
+
+  try {
+    const result = await db.query(
+      `SELECT id, user_id, sale_id, status, message, is_read, created_at
+       FROM notifications
+       WHERE user_id = $1
+       ORDER BY created_at DESC`,
+      [id]
+    );
+
+    res.json(result.rows);
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ message: 'Failed to fetch notifications' });
+  }
+});
+
+// Mark one notification as read
+app.put('/notifications/:id/read', async (req, res) => {
+  const { id } = req.params;
+
+  try {
+    await db.query(
+      'UPDATE notifications SET is_read = true WHERE id = $1',
+      [id]
+    );
+
+    res.json({ message: 'Notification marked as read' });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ message: 'Failed to update notification' });
+  }
+});
+
+// Mark all notifications as read for a user
+app.put('/notifications/user/:id/read-all', async (req, res) => {
+  const { id } = req.params;
+
+  try {
+    await db.query(
+      'UPDATE notifications SET is_read = true WHERE user_id = $1',
+      [id]
+    );
+
+    res.json({ message: 'All notifications marked as read' });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ message: 'Failed to update notifications' });
+  }
+});
+
+// Delete one notification
+app.delete('/notifications/:id', async (req, res) => {
+  const { id } = req.params;
+
+  try {
+    await db.query(
+      'DELETE FROM notifications WHERE id = $1',
+      [id]
+    );
+
+    res.json({ message: 'Notification deleted' });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ message: 'Failed to delete notification' });
+  }
+});
+
+// Clear all notifications for a user
+app.delete('/notifications/user/:id/clear', async (req, res) => {
+  const { id } = req.params;
+
+  try {
+    await db.query(
+      'DELETE FROM notifications WHERE user_id = $1',
+      [id]
+    );
+
+    res.json({ message: 'All notifications cleared' });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ message: 'Failed to clear notifications' });
   }
 });
 
@@ -1338,3 +1473,15 @@ app.get("/admin/new-orders-count", async (req, res) => {
     res.status(500).json({ message: "Failed to count new orders" });
   }
 });
+
+await db.query(`
+  CREATE TABLE IF NOT EXISTS notifications (
+    id SERIAL PRIMARY KEY,
+    user_id INTEGER REFERENCES users(id) ON DELETE CASCADE,
+    sale_id INTEGER REFERENCES sales(id) ON DELETE CASCADE,
+    status TEXT,
+    message TEXT NOT NULL,
+    is_read BOOLEAN DEFAULT FALSE,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+  );
+`);
