@@ -1353,13 +1353,6 @@ app.post('/chatbot', async (req, res) => {
 
       const products = result.rows;
 
-      reply = {
-        type: "products",
-        heading: "Available Products",
-        items: products,
-        footer: "View more products on our store →"
-      };
-
       if (products.length > 0) {
         reply = {
           type: "products",
@@ -1373,6 +1366,7 @@ app.post('/chatbot', async (req, res) => {
               ? `₱${Number(p.price).toFixed(2)}`
               : "No price available",
           })),
+          footer: "View more products on our store →",
         };
       } else {
         reply = "⚠️ No products found in the database.";
