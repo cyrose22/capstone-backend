@@ -1348,10 +1348,17 @@ app.post('/chatbot', async (req, res) => {
         LEFT JOIN product_variants pv ON pv.product_id = p.id
         GROUP BY p.id, p.name, p.category, p.image
         ORDER BY p.name ASC
-        LIMIT 5
+        LIMIT 6
       `);
 
       const products = result.rows;
+
+      reply = {
+        type: "products",
+        heading: "Available Products",
+        items: products,
+        footer: "View more products on our store →"
+      };
 
       if (products.length > 0) {
         reply = {
