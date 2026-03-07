@@ -1324,24 +1324,46 @@ app.post('/chatbot', async (req, res) => {
   let reply = "Sorry, I don’t understand. Can you rephrase?";
 
   try {
-
-    if (lower.includes("hello") || lower.includes("hi") || lower.includes("home")) {
+    if (
+      lower.includes("hello") ||
+      lower.includes("hi") ||
+      lower.includes("home")
+    ) {
       reply = `👋 Hi ${userName || "there"}! How can I help you today?`;
 
-    } else if (lower.includes("price") || lower.includes("cost") || lower.includes("products")) {
-
-      const result = await db.query(
-        "SELECT name, category FROM products"
-      );
+    } else if (
+      lower.includes("price") ||
+      lower.includes("cost") ||
+      lower.includes("product") ||
+      lower.includes("products")
+    ) {
+      const result = await db.query(`
+        SELECT 
+          p.id,
+          p.name,
+          p.category,
+          p.image,
+          MIN(pv.price) AS price
+        FROM products p
+        LEFT JOIN product_variants pv ON pv.product_id = p.id
+        GROUP BY p.id, p.name, p.category, p.image
+        ORDER BY p.name ASC
+      `);
 
       const products = result.rows;
 
       if (products.length > 0) {
-        const productList = products
-          .map(p => `🛒 ${p.name} – ${p.category}`)
-          .join("\n");
-
-        reply = productList;
+        reply = {
+          type: "products",
+          heading: "Available Products",
+          items: products.map((p) => ({
+            id: p.id,
+            name: p.name,
+            category: p.category,
+            image: p.image || null,
+            price: p.price ? `₱${Number(p.price).toFixed(2)}` : "No price available",
+          })),
+        };
       } else {
         reply = "⚠️ No products found in the database.";
       }
@@ -1353,11 +1375,10 @@ app.post('/chatbot', async (req, res) => {
       reply = "☎️ You can reach us at 0912-345-6789 or support@yourshop.com.";
 
     } else if (lower.includes("location") || lower.includes("located")) {
-      reply = "We are located at Liloan, Cebu";
+      reply = "📍 We are located at Liloan, Cebu.";
     }
 
     res.json({ reply });
-
   } catch (err) {
     console.error("Chatbot error:", err);
     res.status(500).json({ reply: "⚠️ Server error." });
