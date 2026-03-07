@@ -1361,11 +1361,53 @@ app.post('/chatbot', async (req, res) => {
             name: p.name,
             category: p.category,
             image: p.image || null,
-            price: p.price ? `₱${Number(p.price).toFixed(2)}` : "No price available",
+            price: p.price
+              ? `₱${Number(p.price).toFixed(2)}`
+              : "No price available",
           })),
         };
       } else {
         reply = "⚠️ No products found in the database.";
+      }
+
+    } else if (
+      lower.includes("track") ||
+      lower.includes("order status") ||
+      lower.includes("status of order")
+    ) {
+      const orderMatch = lower.match(/\d+/);
+      const orderId = orderMatch ? orderMatch[0] : null;
+
+      if (!orderId) {
+        reply = "📦 Please provide your order number. Example: Track order 10";
+      } else {
+        const result = await db.query(
+          `
+          SELECT id, status, total, created_at, customer_name, contact, payment_method
+          FROM sales
+          WHERE id = $1
+          `,
+          [orderId]
+        );
+
+        if (result.rows.length === 0) {
+          reply = "⚠️ Order not found.";
+        } else {
+          const order = result.rows[0];
+
+          reply = {
+            type: "order_status",
+            order: {
+              id: order.id,
+              status: order.status || "Unknown",
+              total: `₱${Number(order.total || 0).toFixed(2)}`,
+              created_at: new Date(order.created_at).toLocaleString(),
+              customer_name: order.customer_name || "N/A",
+              contact: order.contact || "N/A",
+              payment_method: order.payment_method || "N/A",
+            },
+          };
+        }
       }
 
     } else if (lower.includes("payment")) {
