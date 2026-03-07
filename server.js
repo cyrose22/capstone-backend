@@ -1373,13 +1373,13 @@ app.post('/chatbot', async (req, res) => {
     } else if (
       lower.includes("track") ||
       lower.includes("order status") ||
-      lower.includes("status of order")
+      /^\d+$/.test(lower)
     ) {
       const orderMatch = lower.match(/\d+/);
       const orderId = orderMatch ? orderMatch[0] : null;
 
       if (!orderId) {
-        reply = "📦 Please provide your order number. Example: Track order 10";
+        reply = `📦 What is your order number?<br/><small>Example: 10</small>`;
       } else {
         const result = await db.query(
           `
@@ -1399,17 +1399,16 @@ app.post('/chatbot', async (req, res) => {
             type: "order_status",
             order: {
               id: order.id,
-              status: order.status || "Unknown",
-              total: `₱${Number(order.total || 0).toFixed(2)}`,
+              status: order.status,
+              total: `₱${Number(order.total).toFixed(2)}`,
               created_at: new Date(order.created_at).toLocaleString(),
-              customer_name: order.customer_name || "N/A",
-              contact: order.contact || "N/A",
-              payment_method: order.payment_method || "N/A",
+              customer_name: order.customer_name,
+              contact: order.contact,
+              payment_method: order.payment_method,
             },
           };
         }
       }
-
     } else if (lower.includes("payment")) {
       reply = "💳 We accept Cash on Delivery or via GCash.";
 
