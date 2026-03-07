@@ -375,14 +375,15 @@ app.post('/register', async (req, res) => {
     username,
     password,
     contact,
-    role,
+    role = 'user',
     province,
     municipality,
-    barangay
+    barangay,
+    street,
+    block
   } = req.body;
 
   try {
-    // Check if username already exists
     const existingUser = await db.query(
       'SELECT id FROM users WHERE username = $1',
       [username]
@@ -394,38 +395,64 @@ app.post('/register', async (req, res) => {
 
     const hashedPassword = await bcrypt.hash(password, 10);
 
+    // Staff/admin accounts created internally do not need customer OTP flow
+    if (role === 'staff' || role === 'admin') {
+      await db.query(
+        `INSERT INTO users
+        (fullname, username, password, role, contact,
+         province, municipality, barangay, street, block,
+         is_verified, status)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,true,'active')`,
+        [
+          fullname,
+          username,
+          hashedPassword,
+          role,
+          contact || null,
+          province || null,
+          municipality || null,
+          barangay || null,
+          street || null,
+          block || null
+        ]
+      );
+
+      return res.json({ message: `${role} account created successfully` });
+    }
+
+    // Customer registration with OTP
     const otp = Math.floor(100000 + Math.random() * 900000).toString();
-    const expiry = new Date(Date.now() + 10 * 60 * 1000); // 10 minutes
+    const expiry = new Date(Date.now() + 10 * 60 * 1000);
 
     await db.query(
-      `INSERT INTO users 
-        (fullname, username, password, role, contact,
-        province, municipality, barangay,
-        otp_code, otp_expiry, is_verified)
-        VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,false)`,
+      `INSERT INTO users
+      (fullname, username, password, role, contact,
+       province, municipality, barangay, street, block,
+       otp_code, otp_expiry, is_verified, status)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,false,'active')`,
       [
         fullname,
         username,
         hashedPassword,
         role,
-        contact,
-        province,
-        municipality,
-        barangay,
+        contact || null,
+        province || null,
+        municipality || null,
+        barangay || null,
+        street || null,
+        block || null,
         otp,
         expiry
       ]
     );
 
-    // Send SMS
     try {
       await sendOtpEmail(username, otp);
     } catch (emailError) {
-      console.error("Email sending failed:", emailError);
+      console.error('Email sending failed:', emailError);
     }
 
     res.json({ message: 'OTP sent successfully' });
-
   } catch (err) {
     console.error('Registration error:', err);
     res.status(500).json({ message: 'Registration failed' });
@@ -534,14 +561,46 @@ app.post('/login', async (req, res) => {
 app.get('/users', async (req, res) => {
   try {
     const result = await db.query(`
-      SELECT id, fullname, username, role, contact
+      SELECT id, fullname, username, role, contact, status
       FROM users
+      ORDER BY id DESC
     `);
 
     res.json(result.rows);
   } catch (err) {
     console.error(err);
     res.status(500).json({ message: 'Failed to fetch users' });
+  }
+});
+
+app.put('/users/:id/status', async (req, res) => {
+  const { id } = req.params;
+  const { status } = req.body;
+
+  if (!['active', 'inactive'].includes(status)) {
+    return res.status(400).json({ message: 'Invalid status' });
+  }
+
+  try {
+    const result = await db.query(
+      `UPDATE users
+       SET status = $1
+       WHERE id = $2
+       RETURNING id, fullname, username, role, contact, status`,
+      [status, id]
+    );
+
+    if (result.rows.length === 0) {
+      return res.status(404).json({ message: 'User not found' });
+    }
+
+    res.json({
+      message: `User status updated to ${status}`,
+      user: result.rows[0],
+    });
+  } catch (err) {
+    console.error('Status update error:', err);
+    res.status(500).json({ message: 'Failed to update user status' });
   }
 });
 
@@ -604,7 +663,9 @@ app.get('/users/:id', async (req, res) => {
 
   try {
     const result = await db.query(
-      'SELECT id, fullname, username, role, contact FROM users WHERE id = $1',
+      `SELECT id, fullname, username, role, contact, status
+       FROM users
+       WHERE id = $1`,
       [id]
     );
 
@@ -618,6 +679,7 @@ app.get('/users/:id', async (req, res) => {
     res.status(500).json({ message: 'Database error' });
   }
 });
+
 // Product management
 app.post('/products', async (req, res) => {
   const { name, category, image, variants } = req.body;
@@ -1337,19 +1399,28 @@ app.get('/init-db', async (req, res) => {
         password TEXT NOT NULL,
         role TEXT DEFAULT 'user',
         contact TEXT,
-
         province TEXT,
         municipality TEXT,
         barangay TEXT,
         street TEXT,
         block TEXT,
-
         otp_code TEXT,
         otp_expiry TIMESTAMP,
         is_verified BOOLEAN DEFAULT FALSE,
         status TEXT DEFAULT 'active'
       );
     `);
+
+    await db.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS contact TEXT`);
+    await db.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS province TEXT`);
+    await db.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS municipality TEXT`);
+    await db.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS barangay TEXT`);
+    await db.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS street TEXT`);
+    await db.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS block TEXT`);
+    await db.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS otp_code TEXT`);
+    await db.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS otp_expiry TIMESTAMP`);
+    await db.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS is_verified BOOLEAN DEFAULT FALSE`);
+    await db.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS status TEXT DEFAULT 'active'`);
 
     await db.query(`
       CREATE TABLE IF NOT EXISTS products (
@@ -1400,11 +1471,10 @@ app.get('/init-db', async (req, res) => {
       );
     `);
 
-    res.json({ message: "Database initialized successfully" });
-
+    res.json({ message: 'Database initialized successfully' });
   } catch (err) {
     console.error(err);
-    res.status(500).json({ error: "Failed to initialize database" });
+    res.status(500).json({ error: 'Failed to initialize database' });
   }
 });
 
