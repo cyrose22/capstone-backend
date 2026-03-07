@@ -1348,6 +1348,7 @@ app.post('/chatbot', async (req, res) => {
         LEFT JOIN product_variants pv ON pv.product_id = p.id
         GROUP BY p.id, p.name, p.category, p.image
         ORDER BY p.name ASC
+        LIMIT 5
       `);
 
       const products = result.rows;
