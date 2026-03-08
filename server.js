@@ -926,58 +926,42 @@ app.post('/sales', async (req, res) => {
 
     for (const i of items) {
       console.log("PROCESSING ITEM:", i);
-      let resolvedVariantId = i.variantId || null;
-      let resolvedVariantName = i.variantName || null;
-      let resolvedVariantImage = i.variantImage || null;
 
-      // fallback: find variant from product + price
-      if (!resolvedVariantId) {
-        const variantResult = await db.query(
-          `SELECT id, variant_name, image, price
-          FROM product_variants
-          WHERE product_id = $1
-            AND price = $2
-          ORDER BY id ASC`,
-          [i.productId, i.price]
+      if (!i.productId) {
+        throw new Error("Missing productId");
+      }
+
+      if (!i.variantId) {
+        throw new Error(`Missing variantId for product ${i.productId}`);
+      }
+
+      const variantCheck = await db.query(
+        `SELECT id, variant_name, image, quantity
+        FROM product_variants
+        WHERE id = $1 AND product_id = $2`,
+        [i.variantId, i.productId]
+      );
+
+      if (variantCheck.rows.length === 0) {
+        throw new Error(
+          `Invalid variantId ${i.variantId} for product ${i.productId}`
         );
-
-        if (variantResult.rows.length === 1) {
-          resolvedVariantId = variantResult.rows[0].id;
-          resolvedVariantName = resolvedVariantName || variantResult.rows[0].variant_name;
-          resolvedVariantImage = resolvedVariantImage || variantResult.rows[0].image || null;
-        } else {
-          const singleVariantResult = await db.query(
-            `SELECT id, variant_name, image
-            FROM product_variants
-            WHERE product_id = $1
-            ORDER BY id ASC`,
-            [i.productId]
-          );
-
-          if (singleVariantResult.rows.length === 1) {
-            resolvedVariantId = singleVariantResult.rows[0].id;
-            resolvedVariantName = resolvedVariantName || singleVariantResult.rows[0].variant_name;
-            resolvedVariantImage = resolvedVariantImage || singleVariantResult.rows[0].image || null;
-          }
-        }
       }
 
-      if (!resolvedVariantId) {
-        throw new Error(`Could not resolve variant for product ${i.productId}`);
-      }
+      const dbVariant = variantCheck.rows[0];
 
       await db.query(
         `INSERT INTO sale_items
         (sale_id, product_id, variant_id, quantity, price, variant_name, variant_image)
-        VALUES ($1,$2,$3,$4,$5,$6,$7)`,
+        VALUES ($1, $2, $3, $4, $5, $6, $7)`,
         [
           saleId,
           i.productId,
-          resolvedVariantId,
+          i.variantId,
           i.quantity,
           i.price,
-          resolvedVariantName,
-          resolvedVariantImage
+          i.variantName || dbVariant.variant_name,
+          i.variantImage || dbVariant.image || null,
         ]
       );
 
@@ -985,7 +969,7 @@ app.post('/sales', async (req, res) => {
         `UPDATE product_variants
         SET quantity = quantity - $1
         WHERE id = $2`,
-        [i.quantity, resolvedVariantId]
+        [i.quantity, i.variantId]
       );
     }
 
