@@ -942,10 +942,17 @@ app.post('/sales', async (req, res) => {
 
       if (i.variantId) {
         await db.query(
-          `UPDATE product_variants 
-           SET quantity = quantity - $1 
-           WHERE id = $2`,
+          `UPDATE product_variants
+          SET quantity = quantity - $1
+          WHERE id = $2`,
           [i.quantity, i.variantId]
+        );
+      } else {
+        await db.query(
+          `UPDATE products
+          SET quantity = quantity - $1
+          WHERE id = $2`,
+          [i.quantity, i.productId]
         );
       }
     }
@@ -1095,9 +1102,16 @@ app.put('/sales/:id/status', async (req, res) => {
         if (item.variant_id) {
           await db.query(
             `UPDATE product_variants
-             SET quantity = quantity + $1
-             WHERE id = $2`,
+            SET quantity = quantity + $1
+            WHERE id = $2`,
             [item.quantity, item.variant_id]
+          );
+        } else {
+          await db.query(
+            `UPDATE products
+            SET quantity = quantity + $1
+            WHERE id = $2`,
+            [item.quantity, item.product_id]
           );
         }
       }
