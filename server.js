@@ -940,21 +940,17 @@ app.post('/sales', async (req, res) => {
         ]
       );
 
-      if (i.variantId) {
-        await db.query(
-          `UPDATE product_variants
-          SET quantity = quantity - $1
-          WHERE id = $2`,
-          [i.quantity, i.variantId]
-        );
-      } else {
-        await db.query(
-          `UPDATE products
-          SET quantity = quantity - $1
-          WHERE id = $2`,
-          [i.quantity, i.productId]
-        );
+      if (!i.variantId) {
+        throw new Error(`Missing variantId for product ${i.productId}`);
       }
+
+      await db.query(
+        `UPDATE product_variants
+        SET quantity = quantity - $1
+        WHERE id = $2
+        AND quantity >= $1`,
+        [i.quantity, i.variantId]
+      );
     }
 
     await db.query('COMMIT');
@@ -1099,21 +1095,16 @@ app.put('/sales/:id/status', async (req, res) => {
       );
 
       for (const item of itemsResult.rows) {
-        if (item.variant_id) {
-          await db.query(
-            `UPDATE product_variants
-            SET quantity = quantity + $1
-            WHERE id = $2`,
-            [item.quantity, item.variant_id]
-          );
-        } else {
-          await db.query(
-            `UPDATE products
-            SET quantity = quantity + $1
-            WHERE id = $2`,
-            [item.quantity, item.product_id]
-          );
+        if (!item.variant_id) {
+          throw new Error(`Missing variant_id for sale item in sale ${id}`);
         }
+
+        await db.query(
+          `UPDATE product_variants
+          SET quantity = quantity + $1
+          WHERE id = $2`,
+          [item.quantity, item.variant_id]
+        );
       }
     }
 
