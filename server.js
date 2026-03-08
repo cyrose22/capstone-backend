@@ -898,7 +898,6 @@ app.post('/sales', async (req, res) => {
     customer_name = '',
     contact = '',
     payment_method,
-    receipt_url = ''
   } = req.body;
 
   try {
@@ -965,10 +964,10 @@ app.post('/sales', async (req, res) => {
 
     const saleResult = await db.query(
       `INSERT INTO sales 
-       (user_id, total, status, customer_name, contact, payment_method, receipt_url) 
-       VALUES ($1,$2,$3,$4,$5,$6,$7)
+        (user_id, total, status, customer_name, contact, payment_method) 
+       VALUES ($1,$2,$3,$4,$5,$6)
        RETURNING id`,
-      [userId, total, status, customer_name, contact, payment_method, receipt_url]
+      [userId, total, status, customer_name, contact, payment_method]
     );
 
     const saleId = saleResult.rows[0].id;
@@ -1606,7 +1605,6 @@ app.get('/init-db', async (req, res) => {
         customer_name TEXT,
         contact TEXT,
         payment_method TEXT,
-        receipt_url TEXT,
         cancel_description TEXT,
         cancelled_by INTEGER,
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
