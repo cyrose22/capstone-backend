@@ -925,6 +925,14 @@ app.post('/sales', async (req, res) => {
     });
 
     for (const i of items) {
+      console.log("ORDER ITEM:", i);
+
+      const check = await db.query(
+        `SELECT id, quantity FROM product_variants WHERE id = $1`,
+        [i.variantId]
+      );
+      console.log("MATCHED VARIANT:", check.rows);
+
       await db.query(
         `INSERT INTO sale_items
         (sale_id, product_id, variant_id, quantity, price, variant_name, variant_image)
@@ -940,23 +948,12 @@ app.post('/sales', async (req, res) => {
         ]
       );
 
-      if (i.variantId) {
-        // deduct from variant
-        await db.query(
-          `UPDATE product_variants
-          SET quantity = quantity - $1
-          WHERE id = $2`,
-          [i.quantity, i.variantId]
-        );
-      } else {
-        // deduct from product
-        await db.query(
-          `UPDATE products
-          SET quantity = quantity - $1
-          WHERE id = $2`,
-          [i.quantity, i.productId]
-        );
-      }
+      await db.query(
+        `UPDATE product_variants
+         SET quantity = quantity - $1
+         WHERE id = $2`,
+        [i.quantity, i.variantId]
+      );
     }
 
     await db.query('COMMIT');
