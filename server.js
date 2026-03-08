@@ -904,14 +904,70 @@ app.post('/sales', async (req, res) => {
   try {
     await db.query('BEGIN');
 
+    if (!Array.isArray(items) || items.length === 0) {
+      throw new Error('No items provided');
+    }
+
     let total = 0;
-    items.forEach(item => total += item.price * item.quantity);
+    const validatedItems = [];
+
+    for (const i of items) {
+      console.log("PROCESSING ITEM:", i);
+
+      const productId = Number(i.productId);
+      const variantId = Number(i.variantId);
+      const qty = Number(i.quantity || 0);
+
+      if (!productId) {
+        throw new Error("Missing productId");
+      }
+
+      if (!variantId) {
+        throw new Error(`Missing variantId for product ${productId}`);
+      }
+
+      if (!qty || qty < 1) {
+        throw new Error(`Invalid quantity for product ${productId}`);
+      }
+
+      const variantCheck = await db.query(
+        `SELECT id, product_id, variant_name, image, quantity, price
+         FROM product_variants
+         WHERE id = $1 AND product_id = $2`,
+        [variantId, productId]
+      );
+
+      if (variantCheck.rows.length === 0) {
+        throw new Error(
+          `Invalid variantId ${variantId} for product ${productId}`
+        );
+      }
+
+      const dbVariant = variantCheck.rows[0];
+      const dbPrice = Number(dbVariant.price || 0);
+      const dbQty = Number(dbVariant.quantity || 0);
+
+      if (dbQty < qty) {
+        throw new Error(`Not enough stock for ${dbVariant.variant_name}`);
+      }
+
+      total += dbPrice * qty;
+
+      validatedItems.push({
+        productId,
+        variantId,
+        quantity: qty,
+        price: dbPrice,
+        variantName: i.variantName || dbVariant.variant_name,
+        variantImage: i.variantImage || dbVariant.image || null,
+      });
+    }
 
     const saleResult = await db.query(
       `INSERT INTO sales 
-      (user_id, total, status, customer_name, contact, payment_method, receipt_url) 
-      VALUES ($1,$2,$3,$4,$5,$6,$7)
-      RETURNING id`,
+       (user_id, total, status, customer_name, contact, payment_method, receipt_url) 
+       VALUES ($1,$2,$3,$4,$5,$6,$7)
+       RETURNING id`,
       [userId, total, status, customer_name, contact, payment_method, receipt_url]
     );
 
@@ -924,63 +980,37 @@ app.post('/sales', async (req, res) => {
       message: `Order #${saleId} has been placed successfully and is now being processed.`
     });
 
-    for (const i of items) {
-      console.log("PROCESSING ITEM:", i);
-
-      if (!i.productId) {
-        throw new Error("Missing productId");
-      }
-
-      if (!i.variantId) {
-        throw new Error(`Missing variantId for product ${i.productId}`);
-      }
-
-      const variantCheck = await db.query(
-        `SELECT id, variant_name, image, quantity
-        FROM product_variants
-        WHERE id = $1 AND product_id = $2`,
-        [i.variantId, i.productId]
-      );
-
-      if (variantCheck.rows.length === 0) {
-        throw new Error(
-          `Invalid variantId ${i.variantId} for product ${i.productId}`
-        );
-      }
-
-      const dbVariant = variantCheck.rows[0];
-
+    for (const item of validatedItems) {
       await db.query(
         `INSERT INTO sale_items
-        (sale_id, product_id, variant_id, quantity, price, variant_name, variant_image)
-        VALUES ($1, $2, $3, $4, $5, $6, $7)`,
+         (sale_id, product_id, variant_id, quantity, price, variant_name, variant_image)
+         VALUES ($1, $2, $3, $4, $5, $6, $7)`,
         [
           saleId,
-          i.productId,
-          i.variantId,
-          i.quantity,
-          i.price,
-          i.variantName || dbVariant.variant_name,
-          i.variantImage || dbVariant.image || null,
+          item.productId,
+          item.variantId,
+          item.quantity,
+          item.price,
+          item.variantName,
+          item.variantImage,
         ]
       );
 
       await db.query(
         `UPDATE product_variants
-        SET quantity = quantity - $1
-        WHERE id = $2`,
-        [i.quantity, i.variantId]
+         SET quantity = quantity - $1
+         WHERE id = $2`,
+        [item.quantity, item.variantId]
       );
     }
 
     await db.query('COMMIT');
-
     res.json({ message: 'Sale completed', saleId });
 
   } catch (err) {
     await db.query('ROLLBACK');
     console.error(err);
-    res.status(500).json({ message: 'Error creating sale' });
+    res.status(500).json({ message: err.message || 'Error creating sale' });
   }
 });
 
