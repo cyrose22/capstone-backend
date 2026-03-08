@@ -911,8 +911,6 @@ app.post('/sales', async (req, res) => {
     const validatedItems = [];
 
     for (const i of items) {
-      console.log("PROCESSING ITEM:", i);
-
       const productId = Number(i.productId);
       const variantId = Number(i.variantId);
       const qty = Number(i.quantity || 0);
