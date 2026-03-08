@@ -925,6 +925,7 @@ app.post('/sales', async (req, res) => {
     });
 
     for (const i of items) {
+      console.log("PROCESSING ITEM:", i);
       let resolvedVariantId = i.variantId || null;
       let resolvedVariantName = i.variantName || null;
       let resolvedVariantImage = i.variantImage || null;
