@@ -925,13 +925,45 @@ app.post('/sales', async (req, res) => {
     });
 
     for (const i of items) {
-      console.log("ORDER ITEM:", i);
+      let resolvedVariantId = i.variantId || null;
+      let resolvedVariantName = i.variantName || null;
+      let resolvedVariantImage = i.variantImage || null;
 
-      const check = await db.query(
-        `SELECT id, quantity FROM product_variants WHERE id = $1`,
-        [i.variantId]
-      );
-      console.log("MATCHED VARIANT:", check.rows);
+      // fallback: find variant from product + price
+      if (!resolvedVariantId) {
+        const variantResult = await db.query(
+          `SELECT id, variant_name, image, price
+          FROM product_variants
+          WHERE product_id = $1
+            AND price = $2
+          ORDER BY id ASC`,
+          [i.productId, i.price]
+        );
+
+        if (variantResult.rows.length === 1) {
+          resolvedVariantId = variantResult.rows[0].id;
+          resolvedVariantName = resolvedVariantName || variantResult.rows[0].variant_name;
+          resolvedVariantImage = resolvedVariantImage || variantResult.rows[0].image || null;
+        } else {
+          const singleVariantResult = await db.query(
+            `SELECT id, variant_name, image
+            FROM product_variants
+            WHERE product_id = $1
+            ORDER BY id ASC`,
+            [i.productId]
+          );
+
+          if (singleVariantResult.rows.length === 1) {
+            resolvedVariantId = singleVariantResult.rows[0].id;
+            resolvedVariantName = resolvedVariantName || singleVariantResult.rows[0].variant_name;
+            resolvedVariantImage = resolvedVariantImage || singleVariantResult.rows[0].image || null;
+          }
+        }
+      }
+
+      if (!resolvedVariantId) {
+        throw new Error(`Could not resolve variant for product ${i.productId}`);
+      }
 
       await db.query(
         `INSERT INTO sale_items
@@ -940,19 +972,19 @@ app.post('/sales', async (req, res) => {
         [
           saleId,
           i.productId,
-          i.variantId || null,
+          resolvedVariantId,
           i.quantity,
           i.price,
-          i.variantName || null,
-          i.variantImage || null
+          resolvedVariantName,
+          resolvedVariantImage
         ]
       );
 
       await db.query(
         `UPDATE product_variants
-         SET quantity = quantity - $1
-         WHERE id = $2`,
-        [i.quantity, i.variantId]
+        SET quantity = quantity - $1
+        WHERE id = $2`,
+        [i.quantity, resolvedVariantId]
       );
     }
 
