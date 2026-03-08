@@ -1706,3 +1706,19 @@ await db.query(`
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
   );
 `);
+
+app.get('/reset-data', async (req, res) => {
+  try {
+    await db.query(`
+      TRUNCATE notifications, sale_items, sales, users
+      RESTART IDENTITY CASCADE
+    `);
+
+    res.json({
+      message: 'Users, sales, sale_items, and notifications cleared successfully. Products were kept.'
+    });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ message: 'Failed to reset data' });
+  }
+});
