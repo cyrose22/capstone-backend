@@ -1060,16 +1060,48 @@ app.put('/sales/:id/status', async (req, res) => {
   const { status, reason = null, cancelled_by = null } = req.body;
 
   try {
+    await db.query('BEGIN');
+
     const saleResult = await db.query(
       'SELECT id, user_id, status FROM sales WHERE id = $1',
       [id]
     );
 
     if (saleResult.rows.length === 0) {
+      await db.query('ROLLBACK');
       return res.status(404).json({ message: 'Sale not found' });
     }
 
     const sale = saleResult.rows[0];
+    const oldStatus = (sale.status || '').toLowerCase();
+    const newStatus = (status || '').toLowerCase();
+
+    // prevent duplicate restock
+    if (oldStatus === 'cancelled' && newStatus === 'cancelled') {
+      await db.query('ROLLBACK');
+      return res.status(400).json({ message: 'Order is already cancelled' });
+    }
+
+    // restore stock only when changing TO cancelled
+    if (newStatus === 'cancelled' && oldStatus !== 'cancelled') {
+      const itemsResult = await db.query(
+        `SELECT product_id, variant_id, quantity
+         FROM sale_items
+         WHERE sale_id = $1`,
+        [id]
+      );
+
+      for (const item of itemsResult.rows) {
+        if (item.variant_id) {
+          await db.query(
+            `UPDATE product_variants
+             SET quantity = quantity + $1
+             WHERE id = $2`,
+            [item.quantity, item.variant_id]
+          );
+        }
+      }
+    }
 
     if (reason) {
       await db.query(
@@ -1110,9 +1142,11 @@ app.put('/sales/:id/status', async (req, res) => {
       message
     });
 
+    await db.query('COMMIT');
     res.json({ message: 'Status updated successfully' });
 
   } catch (err) {
+    await db.query('ROLLBACK');
     console.error(err);
     res.status(500).json({ message: 'Failed to update status' });
   }
