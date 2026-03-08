@@ -940,14 +940,12 @@ app.post('/sales', async (req, res) => {
         ]
       );
 
-      if (i.variantId) {
-        await db.query(
-          `UPDATE product_variants
-          SET quantity = quantity - $1
-          WHERE id = $2`,
-          [i.quantity, i.variantId]
-        );
-      }
+      await db.query(
+        `UPDATE product_variants
+        SET quantity = quantity - $1
+        WHERE id = $2`,
+        [i.quantity, i.variantId]
+      );
     }
 
     await db.query('COMMIT');
