@@ -1746,6 +1746,22 @@ app.post('/reset-orders', async (req, res) => {
   }
 });
 
+app.get('/reset-orders', async (req, res) => {
+  try {
+    await db.query(`
+      TRUNCATE notifications, sale_items, sales
+      RESTART IDENTITY CASCADE
+    `);
+
+    res.json({
+      message: 'Orders and notifications cleared successfully. Products and users kept.'
+    });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ message: 'Failed to reset orders' });
+  }
+});
+
 // STARTUP
 async function startServer() {
   try {
