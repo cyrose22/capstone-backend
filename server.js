@@ -9,6 +9,8 @@ import path from 'path';
 import { fileURLToPath } from 'url';
 import fetch from 'node-fetch';
 import { Resend } from 'resend';
+import http from 'http';
+import { Server } from 'socket.io';
 import pkg from 'pg';
 const { Pool } = pkg;
 
@@ -44,7 +46,45 @@ async function sendSms(to, message) {
 }
 
 const app = express();
-app.use(cors());
+
+const allowedOrigins = [
+  'http://localhost:5173',
+  'https://capstone-frontend-two-xi.vercel.app',
+];
+
+app.use(
+  cors({
+    origin: allowedOrigins,
+    credentials: true,
+  })
+);
+
+const server = http.createServer(app);
+
+const io = new Server(server, {
+  cors: {
+    origin: allowedOrigins,
+    methods: ['GET', 'POST', 'PUT', 'DELETE'],
+    credentials: true,
+  },
+  transports: ['websocket', 'polling'],
+});
+
+io.on('connection', (socket) => {
+  console.log('🔌 Socket connected:', socket.id);
+
+  socket.on('join-admin', () => {
+    socket.join('admins');
+  });
+
+  socket.on('join-user', (userId) => {
+    if (userId) socket.join(`user:${userId}`);
+  });
+
+  socket.on('disconnect', () => {
+    console.log('❌ Socket disconnected:', socket.id);
+  });
+});
 
 app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
 
@@ -977,6 +1017,22 @@ app.post('/sales', async (req, res) => {
       message: `Order #${saleId} has been placed successfully and is now being processed.`
     });
 
+    const newOrderMessage = `New order #${saleId} received and is now processing.`;
+
+    io.to('admins').emit('new-order', {
+      saleId,
+      status: 'processing',
+      message: newOrderMessage,
+      createdAt: new Date().toISOString(),
+    });
+
+    io.to(`user:${userId}`).emit('user-notification', {
+      saleId,
+      status: 'processing',
+      message: `Order #${saleId} has been placed successfully and is now being processed.`,
+      createdAt: new Date().toISOString(),
+    });
+
     for (const item of validatedItems) {
       await db.query(
         `INSERT INTO sale_items
@@ -1194,6 +1250,20 @@ app.put('/sales/:id/status', async (req, res) => {
       saleId: sale.id,
       status,
       message
+    });
+
+    io.to(`user:${sale.user_id}`).emit('user-notification', {
+      saleId: sale.id,
+      status,
+      message,
+      createdAt: new Date().toISOString(),
+    });
+
+    io.to('admins').emit('admin-order-updated', {
+      saleId: sale.id,
+      status,
+      message: `Order #${sale.id} updated to ${status}.`,
+      createdAt: new Date().toISOString(),
     });
 
     await db.query('COMMIT');
@@ -1521,7 +1591,7 @@ app.use('/uploads', express.static(uploadDir));
 
 // Start server
 const PORT = process.env.PORT || 5000;
-app.listen(PORT, () => {
+server.listen(PORT, () => {
   console.log(`🚀 Server running on port ${PORT}`);
 });
 
