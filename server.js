@@ -954,11 +954,13 @@ app.post('/sales', async (req, res) => {
 
     const saleId = saleResult.rows[0].id;
 
+    const orderNumber = String(saleId).padStart(6, "0");
+
     await createNotification({
       userId,
       saleId,
       status: 'processing',
-      message: `Order #${saleId} has been placed successfully and is now being processed.`
+      message: `Order #${orderNumber} has been placed successfully and is now being processed.`,
     });
 
     const newOrderMessage = `New order #${saleId} received and is now processing.`;
@@ -973,7 +975,7 @@ app.post('/sales', async (req, res) => {
     io.to(`user:${userId}`).emit('user-notification', {
       saleId,
       status: 'processing',
-      message: `Order #${saleId} has been placed successfully and is now being processed.`,
+      message: `Order #${orderNumber} has been placed successfully and is now being processed.`,
       createdAt: new Date().toISOString(),
     });
 
