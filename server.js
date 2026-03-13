@@ -20,7 +20,7 @@ const __dirname = path.dirname(__filename);
 const SEMAPHORE_API_KEY = process.env.SEMAPHORE_API_KEY;
 const SENDER_ID = process.env.SEMAPHORE_SENDER_ID || 'SMSINFO';
 
-//SMS
+// SMS
 async function sendSms(to, message) {
   const url = 'https://api.semaphore.co/api/v4/messages';
 
@@ -35,13 +35,13 @@ async function sendSms(to, message) {
     body: params
   });
 
-  const text = await response.text(); // 👈 read as text first
+  const text = await response.text();
 
   try {
-    return JSON.parse(text); // try parse if JSON
+    return JSON.parse(text);
   } catch {
-    console.log("SMS Response (not JSON):", text);
-    return text; // return raw text instead of crashing
+    console.log('SMS Response (not JSON):', text);
+    return text;
   }
 }
 
@@ -81,14 +81,12 @@ io.on('connection', (socket) => {
     if (userId) socket.join(`user:${userId}`);
   });
 
-  socket.on('disconnect', () => {
-    console.log('❌ Socket disconnected:', socket.id);
+  socket.on('disconnect', (reason) => {
+    console.log('❌ Socket disconnected:', socket.id, 'reason:', reason);
   });
 });
 
 app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
-
-// Increase payload limit for large JSON (e.g., base64 images)
 app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true, limit: '10mb' }));
 
@@ -104,15 +102,14 @@ if (!fs.existsSync('uploads')) {
   fs.mkdirSync('uploads');
 }
 
-// Ensure "uploads" directory exists
 const uploadDir = path.join(__dirname, 'uploads');
 if (!fs.existsSync(uploadDir)) {
   fs.mkdirSync(uploadDir);
 }
 
-let qrImagePath = ''; // Stores the latest QR image path
+let qrImagePath = '';
 
-//EMAIL OTP
+// EMAIL OTP
 const resend = new Resend(process.env.RESEND_API_KEY);
 
 async function sendOtpEmail(to, otp) {
@@ -123,16 +120,12 @@ async function sendOtpEmail(to, otp) {
     html: `
       <div style="font-family: Arial, sans-serif; background:#f4f4f4; padding:40px 0;">
         <div style="max-width:500px; margin:auto; background:white; border-radius:12px; padding:30px; text-align:center; box-shadow:0 8px 25px rgba(0,0,0,0.1);">
-          
           <h2 style="color:#ee4d2d; margin-bottom:10px;">Oscar D'Great</h2>
           <p style="color:#777; margin-bottom:25px;">Pet Supplies Trading</p>
-
           <h3 style="margin-bottom:15px;">Email Verification</h3>
-
           <p style="color:#555; font-size:14px;">
             Use the OTP below to complete your login.
           </p>
-
           <div style="
             font-size:28px;
             font-weight:bold;
@@ -142,24 +135,19 @@ async function sendOtpEmail(to, otp) {
           ">
             ${otp}
           </div>
-
           <p style="font-size:13px; color:#999;">
             This code will expire in 10 minutes.
           </p>
-
           <hr style="margin:25px 0; border:none; border-top:1px solid #eee;">
-
           <p style="font-size:12px; color:#aaa;">
             If you did not request this, please ignore this email.
           </p>
-
         </div>
       </div>
     `
   });
 }
 
-//FORGOT PASSWORD
 // FORGOT PASSWORD EMAIL
 async function sendForgotPasswordEmail(to, otp) {
   await resend.emails.send({
@@ -169,17 +157,13 @@ async function sendForgotPasswordEmail(to, otp) {
     html: `
       <div style="font-family: Arial, sans-serif; background:#f4f4f4; padding:40px 0;">
         <div style="max-width:500px; margin:auto; background:white; border-radius:12px; padding:30px; text-align:center; box-shadow:0 8px 25px rgba(0,0,0,0.1);">
-          
           <h2 style="color:#ee4d2d; margin-bottom:10px;">Oscar D'Great</h2>
           <p style="color:#777; margin-bottom:25px;">Pet Supplies Trading</p>
-
           <h3 style="margin-bottom:15px;">Password Reset Request</h3>
-
           <p style="color:#555; font-size:14px;">
             We received a request to reset your password.
             Use the OTP below to proceed with resetting your password.
           </p>
-
           <div style="
             font-size:28px;
             font-weight:bold;
@@ -189,17 +173,13 @@ async function sendForgotPasswordEmail(to, otp) {
           ">
             ${otp}
           </div>
-
           <p style="font-size:13px; color:#999;">
             This code will expire in 10 minutes.
           </p>
-
           <hr style="margin:25px 0; border:none; border-top:1px solid #eee;">
-
           <p style="font-size:12px; color:#aaa;">
             If you did not request a password reset, please ignore this email.
           </p>
-
         </div>
       </div>
     `
@@ -214,7 +194,7 @@ async function createNotification({ userId, saleId, status, message }) {
   );
 }
 
-//SEND-OTP 
+// SEND-OTP
 app.post('/send-login-otp', async (req, res) => {
   const { username } = req.body;
 
@@ -341,7 +321,6 @@ app.post('/reset-password', async (req, res) => {
   }
 });
 
-//login-otp
 // LOGIN WITH OTP
 app.post('/login-otp', async (req, res) => {
   const { username, otp } = req.body;
@@ -393,7 +372,6 @@ app.post('/login-otp', async (req, res) => {
       { expiresIn: '1d' }
     );
 
-    // ✅ FIXED RESPONSE
     res.json({
       token,
       id: user.id,
@@ -408,7 +386,7 @@ app.post('/login-otp', async (req, res) => {
   }
 });
 
-//REGISTER
+// REGISTER
 app.post('/register', async (req, res) => {
   const {
     fullname,
@@ -435,7 +413,6 @@ app.post('/register', async (req, res) => {
 
     const hashedPassword = await bcrypt.hash(password, 10);
 
-    // Staff/admin accounts created internally do not need customer OTP flow
     if (role === 'staff' || role === 'admin') {
       await db.query(
         `INSERT INTO users
@@ -460,7 +437,6 @@ app.post('/register', async (req, res) => {
       return res.json({ message: `${role} account created successfully` });
     }
 
-    // Customer registration with OTP
     const otp = Math.floor(100000 + Math.random() * 900000).toString();
     const expiry = new Date(Date.now() + 10 * 60 * 1000);
 
@@ -499,7 +475,7 @@ app.post('/register', async (req, res) => {
   }
 });
 
-//VERIFY OTP
+// VERIFY OTP
 app.post('/verify-otp', async (req, res) => {
   const { username, otp } = req.body;
 
@@ -535,7 +511,6 @@ app.post('/verify-otp', async (req, res) => {
   }
 });
 
-//LOGIN
 // LOGIN
 app.post('/login', async (req, res) => {
   const { username, password } = req.body;
@@ -580,7 +555,6 @@ app.post('/login', async (req, res) => {
       { expiresIn: '1d' }
     );
 
-    // ✅ FIXED RESPONSE
     res.json({
       message: 'Login successful',
       token,
@@ -597,7 +571,7 @@ app.post('/login', async (req, res) => {
   }
 });
 
-//USERS
+// USERS
 app.get('/users', async (req, res) => {
   try {
     const result = await db.query(`
@@ -720,7 +694,7 @@ app.get('/users/:id', async (req, res) => {
   }
 });
 
-// Product management
+// PRODUCT MANAGEMENT
 app.post('/products', async (req, res) => {
   const { name, category, image, variants } = req.body;
 
@@ -807,34 +781,6 @@ app.get('/products', async (req, res) => {
   }
 });
 
-// app.post('/products', async (req, res) => {
-//   const { name, category, image, variants } = req.body;
-
-//   if (!name) return res.status(400).json({ message: 'Product name is required' });
-
-//   try {
-//     const [result] = await db.promise().query(
-//       'INSERT INTO products (name, category, image) VALUES (?, ?, ?)',
-//       [name, category, image || null]
-//     );
-//     const productId = result.insertId;
-
-//     if (Array.isArray(variants)) {
-//       for (const v of variants) {
-//         await db.promise().query(
-//           'INSERT INTO product_variants (product_id, variant_name, price, quantity, image) VALUES (?, ?, ?, ?, ?)',
-//           [productId, v.variant_name, v.price, v.quantity, v.image || null]
-//         );
-//       }
-//     }
-
-//     res.json({ message: 'Product added', id: productId });
-//   } catch (err) {
-//     console.error(err);
-//     res.status(500).json({ message: 'Failed to add product' });
-//   }
-// });
-
 app.put('/products/:id', async (req, res) => {
   const { id } = req.params;
   const { name, category, image, variants } = req.body;
@@ -893,7 +839,7 @@ app.put('/products/:id', async (req, res) => {
     res.json({ message: 'Product updated successfully' });
 
   } catch (err) {
-    console.error("UPDATE PRODUCT ERROR:", err);
+    console.error('UPDATE PRODUCT ERROR:', err);
     res.status(500).json({ message: 'Failed to update product' });
   }
 });
@@ -929,7 +875,7 @@ app.delete('/products/:id', async (req, res) => {
   }
 });
 
-// Create a sale
+// CREATE A SALE
 app.post('/sales', async (req, res) => {
   const {
     userId,
@@ -956,7 +902,7 @@ app.post('/sales', async (req, res) => {
       const qty = Number(i.quantity || 0);
 
       if (!productId) {
-        throw new Error("Missing productId");
+        throw new Error('Missing productId');
       }
 
       if (!variantId) {
@@ -975,9 +921,7 @@ app.post('/sales', async (req, res) => {
       );
 
       if (variantCheck.rows.length === 0) {
-        throw new Error(
-          `Invalid variantId ${variantId} for product ${productId}`
-        );
+        throw new Error(`Invalid variantId ${variantId} for product ${productId}`);
       }
 
       const dbVariant = variantCheck.rows[0];
@@ -1067,7 +1011,7 @@ app.post('/sales', async (req, res) => {
   }
 });
 
-// Get sales (all or by user)
+// GET SALES
 app.get('/sales', async (req, res) => {
   const { userId } = req.query;
 
@@ -1117,7 +1061,7 @@ app.get('/sales', async (req, res) => {
   }
 });
 
-// Get sales by user ID
+// GET SALES BY USER ID
 app.get('/sales/user/:id', async (req, res) => {
   const userId = req.params.id;
 
@@ -1160,7 +1104,7 @@ app.get('/sales/user/:id', async (req, res) => {
   }
 });
 
-// Update sale status
+// UPDATE SALE STATUS
 app.put('/sales/:id/status', async (req, res) => {
   const { id } = req.params;
   const { status, reason = null, cancelled_by = null } = req.body;
@@ -1182,31 +1126,27 @@ app.put('/sales/:id/status', async (req, res) => {
     const oldStatus = (sale.status || '').toLowerCase();
     const newStatus = (status || '').toLowerCase();
 
-    // prevent duplicate restock
     if (newStatus === 'cancelled' && oldStatus !== 'cancelled') {
-
       const itemsResult = await db.query(
         `SELECT product_id, variant_id, quantity
-        FROM sale_items
-        WHERE sale_id = $1`,
+         FROM sale_items
+         WHERE sale_id = $1`,
         [id]
       );
 
       for (const item of itemsResult.rows) {
-
         if (item.variant_id) {
           await db.query(
             `UPDATE product_variants
-            SET quantity = quantity + $1
-            WHERE id = $2`,
+             SET quantity = quantity + $1
+             WHERE id = $2`,
             [item.quantity, item.variant_id]
           );
-
         } else {
           await db.query(
             `UPDATE products
-            SET quantity = quantity + $1
-            WHERE id = $2`,
+             SET quantity = quantity + $1
+             WHERE id = $2`,
             [item.quantity, item.product_id]
           );
         }
@@ -1276,7 +1216,7 @@ app.put('/sales/:id/status', async (req, res) => {
   }
 });
 
-// Get notifications for a user
+// NOTIFICATIONS
 app.get('/notifications/user/:id', async (req, res) => {
   const { id } = req.params;
 
@@ -1296,7 +1236,6 @@ app.get('/notifications/user/:id', async (req, res) => {
   }
 });
 
-// Mark one notification as read
 app.put('/notifications/:id/read', async (req, res) => {
   const { id } = req.params;
 
@@ -1313,7 +1252,6 @@ app.put('/notifications/:id/read', async (req, res) => {
   }
 });
 
-// Mark all notifications as read for a user
 app.put('/notifications/user/:id/read-all', async (req, res) => {
   const { id } = req.params;
 
@@ -1330,7 +1268,6 @@ app.put('/notifications/user/:id/read-all', async (req, res) => {
   }
 });
 
-// Delete one notification
 app.delete('/notifications/:id', async (req, res) => {
   const { id } = req.params;
 
@@ -1347,7 +1284,6 @@ app.delete('/notifications/:id', async (req, res) => {
   }
 });
 
-// Clear all notifications for a user
 app.delete('/notifications/user/:id/clear', async (req, res) => {
   const { id } = req.params;
 
@@ -1364,7 +1300,7 @@ app.delete('/notifications/user/:id/clear', async (req, res) => {
   }
 });
 
-// PUT /users/:id/password
+// PASSWORD UPDATE
 app.put('/users/:id/password', async (req, res) => {
   const { id } = req.params;
   const { password } = req.body;
@@ -1394,7 +1330,7 @@ app.put('/users/:id/password', async (req, res) => {
   }
 });
 
-// Multer setup
+// MULTER SETUP
 const storage = multer.diskStorage({
   destination: (req, file, cb) => cb(null, uploadDir),
   filename: (req, file, cb) => {
@@ -1415,25 +1351,25 @@ const upload = multer({
   },
 });
 
-// Upload QR code image
-app.get('/api/admin/qr-code', (req, res) => {
-  const sql = 'SELECT url FROM qr_codes ORDER BY uploaded_at DESC LIMIT 1';
-  db.query(sql, (err, results) => {
-    if (err) {
-      console.error('Error fetching QR Code:', err);
-      return res.status(500).json({ error: 'Server error' });
-    }
+// QR CODE ROUTES - FIXED FOR POSTGRES
+app.get('/api/admin/qr-code', async (req, res) => {
+  try {
+    const result = await db.query(
+      'SELECT url FROM qr_codes ORDER BY uploaded_at DESC LIMIT 1'
+    );
 
-    if (results.length === 0) {
+    if (result.rows.length === 0) {
       return res.status(404).json({ error: 'QR Code not found' });
     }
 
-    const qrUrl = `https://capstone-backend-kiax.onrender.com${results[0].url}`;
+    const qrUrl = `https://capstone-backend-kiax.onrender.com${result.rows[0].url}`;
     res.json({ url: qrUrl });
-  });
+  } catch (err) {
+    console.error('Error fetching QR Code:', err);
+    res.status(500).json({ error: 'Server error' });
+  }
 });
 
-// Get QR image
 app.get('/admin/get-qr', (req, res) => {
   try {
     const data = fs.readFileSync('qr.json', 'utf-8');
@@ -1444,7 +1380,6 @@ app.get('/admin/get-qr', (req, res) => {
   }
 });
 
-// Endpoint to upload receipt
 app.post('/upload-receipt', (req, res) => {
   upload.single('receipt')(req, res, (err) => {
     if (err) {
@@ -1457,43 +1392,47 @@ app.post('/upload-receipt', (req, res) => {
   });
 });
 
-// Admin QR Upload (saves uploaded QR and updates database)
-app.post('/admin/upload-qr', upload.single('qrImage'), (req, res) => {
+app.post('/admin/upload-qr', upload.single('qrImage'), async (req, res) => {
   if (!req.file) return res.status(400).json({ message: 'No file uploaded' });
 
   const qrPath = `/uploads/${req.file.filename}`;
 
-  const sql = 'INSERT INTO qr_codes (url, uploaded_at) VALUES (?, NOW())';
-  db.query(sql, [qrPath], (err) => {
-    if (err) {
-      console.error('Failed to save QR URL to database:', err);
-      return res.status(500).json({ message: 'Error saving QR code' });
-    }
+  try {
+    await db.query(
+      'INSERT INTO qr_codes (url, uploaded_at) VALUES ($1, NOW())',
+      [qrPath]
+    );
 
-    res.json({ message: 'QR uploaded successfully', url: `https://capstone-backend-kiax.onrender.com${qrPath}` });
-  });
+    res.json({
+      message: 'QR uploaded successfully',
+      url: `https://capstone-backend-kiax.onrender.com${qrPath}`
+    });
+  } catch (err) {
+    console.error('Failed to save QR URL to database:', err);
+    res.status(500).json({ message: 'Error saving QR code' });
+  }
 });
 
-// Simple FAQ chatbot
+// SIMPLE FAQ CHATBOT
 app.post('/chatbot', async (req, res) => {
   const { message, userName } = req.body;
-  const lower = message?.toLowerCase() || "";
+  const lower = message?.toLowerCase() || '';
 
-  let reply = "Sorry, I don’t understand. Can you rephrase?";
+  let reply = 'Sorry, I don’t understand. Can you rephrase?';
 
   try {
     if (
-      lower.includes("hello") ||
-      lower.includes("hi") ||
-      lower.includes("home")
+      lower.includes('hello') ||
+      lower.includes('hi') ||
+      lower.includes('home')
     ) {
-      reply = `👋 Hi ${userName || "there"}! How can I help you today?`;
+      reply = `👋 Hi ${userName || 'there'}! How can I help you today?`;
 
     } else if (
-      lower.includes("price") ||
-      lower.includes("cost") ||
-      lower.includes("product") ||
-      lower.includes("products")
+      lower.includes('price') ||
+      lower.includes('cost') ||
+      lower.includes('product') ||
+      lower.includes('products')
     ) {
       const result = await db.query(`
         SELECT 
@@ -1513,8 +1452,8 @@ app.post('/chatbot', async (req, res) => {
 
       if (products.length > 0) {
         reply = {
-          type: "products",
-          heading: "Available Products",
+          type: 'products',
+          heading: 'Available Products',
           items: products.map((p) => ({
             id: p.id,
             name: p.name,
@@ -1522,17 +1461,17 @@ app.post('/chatbot', async (req, res) => {
             image: p.image || null,
             price: p.price
               ? `₱${Number(p.price).toFixed(2)}`
-              : "No price available",
+              : 'No price available',
           })),
-          footer: "View more products on our store →",
+          footer: 'View more products on our store →',
         };
       } else {
-        reply = "⚠️ No products found in the database.";
+        reply = '⚠️ No products found in the database.';
       }
 
     } else if (
-      lower.includes("track") ||
-      lower.includes("order status") ||
+      lower.includes('track') ||
+      lower.includes('order status') ||
       /^\d+$/.test(lower)
     ) {
       const orderMatch = lower.match(/\d+/);
@@ -1551,12 +1490,12 @@ app.post('/chatbot', async (req, res) => {
         );
 
         if (result.rows.length === 0) {
-          reply = "⚠️ Order not found.";
+          reply = '⚠️ Order not found.';
         } else {
           const order = result.rows[0];
 
           reply = {
-            type: "order_status",
+            type: 'order_status',
             order: {
               id: order.id,
               status: order.status,
@@ -1569,33 +1508,24 @@ app.post('/chatbot', async (req, res) => {
           };
         }
       }
-    } else if (lower.includes("payment")) {
-      reply = "💳 We accept Cash on Delivery or via GCash.";
-
-    } else if (lower.includes("contact")) {
-      reply = "☎️ You can reach us at 0912-345-6789 or support@yourshop.com.";
-
-    } else if (lower.includes("location") || lower.includes("located")) {
-      reply = "📍 We are located at Liloan, Cebu.";
+    } else if (lower.includes('payment')) {
+      reply = '💳 We accept Cash on Delivery or via GCash.';
+    } else if (lower.includes('contact')) {
+      reply = '☎️ You can reach us at 0912-345-6789 or support@yourshop.com.';
+    } else if (lower.includes('location') || lower.includes('located')) {
+      reply = '📍 We are located at Liloan, Cebu.';
     }
 
     res.json({ reply });
   } catch (err) {
-    console.error("Chatbot error:", err);
-    res.status(500).json({ reply: "⚠️ Server error." });
+    console.error('Chatbot error:', err);
+    res.status(500).json({ reply: '⚠️ Server error.' });
   }
 });
 
-// Serve uploaded images
 app.use('/uploads', express.static(uploadDir));
 
-// Start server
-const PORT = process.env.PORT || 5000;
-server.listen(PORT, () => {
-  console.log(`🚀 Server running on port ${PORT}`);
-});
-
-app.get("/make-admin/:username", async (req, res) => {
+app.get('/make-admin/:username', async (req, res) => {
   const { username } = req.params;
 
   try {
@@ -1604,10 +1534,10 @@ app.get("/make-admin/:username", async (req, res) => {
       [username]
     );
 
-    res.json({ message: "User promoted to admin successfully" });
+    res.json({ message: 'User promoted to admin successfully' });
   } catch (err) {
     console.error(err);
-    res.status(500).json({ message: "Failed to promote user" });
+    res.status(500).json({ message: 'Failed to promote user' });
   }
 });
 
@@ -1692,6 +1622,26 @@ app.get('/init-db', async (req, res) => {
       );
     `);
 
+    await db.query(`
+      CREATE TABLE IF NOT EXISTS qr_codes (
+        id SERIAL PRIMARY KEY,
+        url TEXT NOT NULL,
+        uploaded_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+      );
+    `);
+
+    await db.query(`
+      CREATE TABLE IF NOT EXISTS notifications (
+        id SERIAL PRIMARY KEY,
+        user_id INTEGER REFERENCES users(id) ON DELETE CASCADE,
+        sale_id INTEGER REFERENCES sales(id) ON DELETE CASCADE,
+        status TEXT,
+        message TEXT NOT NULL,
+        is_read BOOLEAN DEFAULT FALSE,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+      );
+    `);
+
     res.json({ message: 'Database initialized successfully' });
   } catch (err) {
     console.error(err);
@@ -1719,37 +1669,35 @@ app.get('/clear-users', async (req, res) => {
   }
 });
 
-app.get("/set-role/:username/:role", async (req, res) => {
+app.get('/set-role/:username/:role', async (req, res) => {
   const { username, role } = req.params;
 
-  const allowedRoles = ["admin", "staff", "user"];
+  const allowedRoles = ['admin', 'staff', 'user'];
 
   if (!allowedRoles.includes(role)) {
-    return res.status(400).json({ message: "Invalid role" });
+    return res.status(400).json({ message: 'Invalid role' });
   }
 
   try {
     await db.query(
-      "UPDATE users SET role = $1 WHERE username = $2",
+      'UPDATE users SET role = $1 WHERE username = $2',
       [role, username]
     );
 
     res.json({ message: `User role updated to ${role}` });
   } catch (err) {
     console.error(err);
-    res.status(500).json({ message: "Failed to update role" });
+    res.status(500).json({ message: 'Failed to update role' });
   }
 });
 
-// NEW: Admin - count new orders since a timestamp
-app.get("/admin/new-orders-count", async (req, res) => {
+app.get('/admin/new-orders-count', async (req, res) => {
   try {
-    const since = req.query.since; // ISO string
-    // default: if no "since", count today's orders (or last 24h)
-    const sinceDate = since ? new Date(since) : new Date(Date.now() - 24 * 60 * 60 * 1000);
+    const since = req.query.since;
+    const sinceDate = since
+      ? new Date(since)
+      : new Date(Date.now() - 24 * 60 * 60 * 1000);
 
-    // You can change the status filter depending on your logic:
-    // processing = new orders
     const result = await db.query(
       `SELECT COUNT(*)::int AS count
        FROM sales
@@ -1760,22 +1708,10 @@ app.get("/admin/new-orders-count", async (req, res) => {
 
     res.json({ count: result.rows[0].count });
   } catch (err) {
-    console.error("new-orders-count error:", err);
-    res.status(500).json({ message: "Failed to count new orders" });
+    console.error('new-orders-count error:', err);
+    res.status(500).json({ message: 'Failed to count new orders' });
   }
 });
-
-await db.query(`
-  CREATE TABLE IF NOT EXISTS notifications (
-    id SERIAL PRIMARY KEY,
-    user_id INTEGER REFERENCES users(id) ON DELETE CASCADE,
-    sale_id INTEGER REFERENCES sales(id) ON DELETE CASCADE,
-    status TEXT,
-    message TEXT NOT NULL,
-    is_read BOOLEAN DEFAULT FALSE,
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-  );
-`);
 
 app.get('/reset-data', async (req, res) => {
   try {
@@ -1809,3 +1745,38 @@ app.post('/reset-orders', async (req, res) => {
     res.status(500).json({ message: 'Failed to reset orders' });
   }
 });
+
+// STARTUP
+async function startServer() {
+  try {
+    await db.query(`
+      CREATE TABLE IF NOT EXISTS notifications (
+        id SERIAL PRIMARY KEY,
+        user_id INTEGER REFERENCES users(id) ON DELETE CASCADE,
+        sale_id INTEGER REFERENCES sales(id) ON DELETE CASCADE,
+        status TEXT,
+        message TEXT NOT NULL,
+        is_read BOOLEAN DEFAULT FALSE,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+      );
+    `);
+
+    await db.query(`
+      CREATE TABLE IF NOT EXISTS qr_codes (
+        id SERIAL PRIMARY KEY,
+        url TEXT NOT NULL,
+        uploaded_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+      );
+    `);
+
+    const PORT = process.env.PORT || 5000;
+    server.listen(PORT, () => {
+      console.log(`🚀 Server running on port ${PORT}`);
+    });
+  } catch (err) {
+    console.error('Startup failed:', err);
+    process.exit(1);
+  }
+}
+
+startServer();
