@@ -1504,7 +1504,9 @@ app.post('/chatbot', async (req, res) => {
               id: order.id,
               status: order.status,
               total: `₱${Number(order.total).toFixed(2)}`,
-              created_at: new Date(order.created_at).toLocaleString(),
+              created_at: new Date(order.created_at).toLocaleString("en-PH", {
+                timeZone: "Asia/Manila",
+              }),
               customer_name: order.customer_name,
               contact: order.contact,
               payment_method: order.payment_method,
@@ -1547,7 +1549,9 @@ app.post('/chatbot', async (req, res) => {
               id: order.id,
               status: order.status,
               total: `₱${Number(order.total).toFixed(2)}`,
-              created_at: new Date(order.created_at).toLocaleString(),
+              created_at: new Date(order.created_at).toLocaleString("en-PH", {
+                timeZone: "Asia/Manila",
+              }),
               customer_name: order.customer_name,
               contact: order.contact,
               payment_method: order.payment_method,
