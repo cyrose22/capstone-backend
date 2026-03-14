@@ -1552,7 +1552,10 @@ app.post('/chatbot', async (req, res) => {
       if (!userId) {
         reply = '⚠️ Please log in first to track your order.';
       } else if (!orderId) {
-        reply = '📦 You can type your order number, or tap "Track My Last Order".';
+        reply = `📦 Order Tracking
+
+          Type your **order number**  
+          or tap **Track My Last Order** below.`;
       } else {
         const result = await db.query(
           `
