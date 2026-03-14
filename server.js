@@ -1554,8 +1554,8 @@ app.post('/chatbot', async (req, res) => {
       } else if (!orderId) {
         reply = `📦 Order Tracking
 
-          Type your **order number**  
-          or tap **Track My Last Order** below.`;
+          Enter your order number to check the status,
+          or tap "Track My Last Order" below.`;
       } else {
         const result = await db.query(
           `
