@@ -1718,54 +1718,54 @@ app.get('/admin/new-orders-count', async (req, res) => {
   }
 });
 
-app.get('/reset-data', async (req, res) => {
-  try {
-    await db.query(`
-      TRUNCATE notifications, sale_items, sales, users
-      RESTART IDENTITY CASCADE
-    `);
+// app.get('/reset-data', async (req, res) => {
+//   try {
+//     await db.query(`
+//       TRUNCATE notifications, sale_items, sales, users
+//       RESTART IDENTITY CASCADE
+//     `);
 
-    res.json({
-      message: 'Users, sales, sale_items, and notifications cleared successfully. Products were kept.'
-    });
-  } catch (err) {
-    console.error(err);
-    res.status(500).json({ message: 'Failed to reset data' });
-  }
-});
+//     res.json({
+//       message: 'Users, sales, sale_items, and notifications cleared successfully. Products were kept.'
+//     });
+//   } catch (err) {
+//     console.error(err);
+//     res.status(500).json({ message: 'Failed to reset data' });
+//   }
+// });
 
-app.post('/reset-orders', async (req, res) => {
-  try {
-    await db.query(`
-      TRUNCATE notifications, sale_items, sales
-      RESTART IDENTITY CASCADE
-    `);
+// app.post('/reset-orders', async (req, res) => {
+//   try {
+//     await db.query(`
+//       TRUNCATE notifications, sale_items, sales
+//       RESTART IDENTITY CASCADE
+//     `);
 
-    res.json({
-      message: 'Orders and notifications cleared successfully. Products and users kept.'
-    });
+//     res.json({
+//       message: 'Orders and notifications cleared successfully. Products and users kept.'
+//     });
 
-  } catch (err) {
-    console.error(err);
-    res.status(500).json({ message: 'Failed to reset orders' });
-  }
-});
+//   } catch (err) {
+//     console.error(err);
+//     res.status(500).json({ message: 'Failed to reset orders' });
+//   }
+// });
 
-app.get('/reset-orders', async (req, res) => {
-  try {
-    await db.query(`
-      TRUNCATE notifications, sale_items, sales
-      RESTART IDENTITY CASCADE
-    `);
+// app.get('/reset-orders', async (req, res) => {
+//   try {
+//     await db.query(`
+//       TRUNCATE notifications, sale_items, sales
+//       RESTART IDENTITY CASCADE
+//     `);
 
-    res.json({
-      message: 'Orders and notifications cleared successfully. Products and users kept.'
-    });
-  } catch (err) {
-    console.error(err);
-    res.status(500).json({ message: 'Failed to reset orders' });
-  }
-});
+//     res.json({
+//       message: 'Orders and notifications cleared successfully. Products and users kept.'
+//     });
+//   } catch (err) {
+//     console.error(err);
+//     res.status(500).json({ message: 'Failed to reset orders' });
+//   }
+// });
 
 // STARTUP
 async function startServer() {
