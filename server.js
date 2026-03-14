@@ -1477,22 +1477,25 @@ app.post('/chatbot', async (req, res) => {
       /^\d+$/.test(lower)
     ) {
       const orderMatch = lower.match(/\d+/);
-      const orderId = orderMatch ? orderMatch[0] : null;
+      const orderId = orderMatch ? Number(orderMatch[0]) : null;
+      const userId = Number(req.body.userId);
 
-      if (!orderId) {
-        reply = `📦 What is your order number?<br/><small>Example: 10</small>`;
+      if (!userId) {
+        reply = '⚠️ Please log in first to track your order.';
+      } else if (!orderId) {
+        reply = '📦 Please enter your order number. Example: 10';
       } else {
         const result = await db.query(
           `
           SELECT id, status, total, created_at, customer_name, contact, payment_method
           FROM sales
-          WHERE id = $1
+          WHERE id = $1 AND user_id = $2
           `,
-          [orderId]
+          [orderId, userId]
         );
 
         if (result.rows.length === 0) {
-          reply = '⚠️ Order not found.';
+          reply = '⚠️ Order not found, or this order does not belong to your account.';
         } else {
           const order = result.rows[0];
 
