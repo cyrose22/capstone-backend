@@ -1494,9 +1494,24 @@ app.post('/chatbot', async (req, res) => {
         );
 
         if (result.rows.length === 0) {
-          reply = '⚠️ You do not have any orders yet.';
+          reply = '⚠️ Order not found.';
         } else {
           const order = result.rows[0];
+
+          const itemsResult = await db.query(
+            `
+            SELECT
+              si.quantity,
+              si.price,
+              si.variant_name,
+              p.name AS product_name
+            FROM sale_items si
+            JOIN products p ON p.id = si.product_id
+            WHERE si.sale_id = $1
+            ORDER BY si.id ASC
+            `,
+            [order.id]
+          );
 
           reply = {
             type: 'order_status',
@@ -1515,11 +1530,16 @@ app.post('/chatbot', async (req, res) => {
               customer_name: order.customer_name,
               contact: order.contact,
               payment_method: order.payment_method,
+              items: itemsResult.rows.map((item) => ({
+                product_name: item.product_name,
+                variant_name: item.variant_name,
+                quantity: item.quantity,
+                price: `₱${Number(item.price).toFixed(2)}`,
+              })),
             },
           };
         }
       }
-
     } else if (
       lower.includes('track') ||
       lower.includes('order status') ||
@@ -1544,9 +1564,24 @@ app.post('/chatbot', async (req, res) => {
         );
 
         if (result.rows.length === 0) {
-          reply = '⚠️ Order not found.';
+          reply = '⚠️ You do not have any orders yet.';
         } else {
           const order = result.rows[0];
+
+          const itemsResult = await db.query(
+            `
+            SELECT
+              si.quantity,
+              si.price,
+              si.variant_name,
+              p.name AS product_name
+            FROM sale_items si
+            JOIN products p ON p.id = si.product_id
+            WHERE si.sale_id = $1
+            ORDER BY si.id ASC
+            `,
+            [order.id]
+          );
 
           reply = {
             type: 'order_status',
@@ -1565,6 +1600,12 @@ app.post('/chatbot', async (req, res) => {
               customer_name: order.customer_name,
               contact: order.contact,
               payment_method: order.payment_method,
+              items: itemsResult.rows.map((item) => ({
+                product_name: item.product_name,
+                variant_name: item.variant_name,
+                quantity: item.quantity,
+                price: `₱${Number(item.price).toFixed(2)}`,
+              })),
             },
           };
         }
