@@ -1472,6 +1472,48 @@ app.post('/chatbot', async (req, res) => {
       }
 
     } else if (
+      lower.includes('track my last order') ||
+      lower.includes('my last order') ||
+      lower.includes('latest order') ||
+      lower.includes('recent order')
+    ) {
+      const userId = Number(req.body.userId);
+
+      if (!userId) {
+        reply = '⚠️ Please log in first to track your order.';
+      } else {
+        const result = await db.query(
+          `
+          SELECT id, status, total, created_at, customer_name, contact, payment_method
+          FROM sales
+          WHERE user_id = $1
+          ORDER BY created_at DESC
+          LIMIT 1
+          `,
+          [userId]
+        );
+
+        if (result.rows.length === 0) {
+          reply = '⚠️ You do not have any orders yet.';
+        } else {
+          const order = result.rows[0];
+
+          reply = {
+            type: 'order_status',
+            order: {
+              id: order.id,
+              status: order.status,
+              total: `₱${Number(order.total).toFixed(2)}`,
+              created_at: new Date(order.created_at).toLocaleString(),
+              customer_name: order.customer_name,
+              contact: order.contact,
+              payment_method: order.payment_method,
+            },
+          };
+        }
+      }
+
+    } else if (
       lower.includes('track') ||
       lower.includes('order status') ||
       /^\d+$/.test(lower)
@@ -1483,7 +1525,7 @@ app.post('/chatbot', async (req, res) => {
       if (!userId) {
         reply = '⚠️ Please log in first to track your order.';
       } else if (!orderId) {
-        reply = '📦 Please enter your order number. Example: 10';
+        reply = '📦 You can type your order number, or tap "Track My Last Order".';
       } else {
         const result = await db.query(
           `
@@ -1495,7 +1537,7 @@ app.post('/chatbot', async (req, res) => {
         );
 
         if (result.rows.length === 0) {
-          reply = '⚠️ Order not found, or this order does not belong to your account.';
+          reply = '⚠️ Order not found.';
         } else {
           const order = result.rows[0];
 
