@@ -1501,7 +1501,7 @@ app.post('/chatbot', async (req, res) => {
           reply = {
             type: 'order_status',
             order: {
-              id: String(order.id).padStart(4, "0"),
+              id: String(order.id).padStart(6, "0"),
               status: order.status,
               total: `₱${Number(order.total).toFixed(2)}`,
               created_at: new Date(order.created_at).toLocaleString("en-PH", {
@@ -1551,7 +1551,7 @@ app.post('/chatbot', async (req, res) => {
           reply = {
             type: 'order_status',
             order: {
-              id: String(order.id).padStart(4, "0"),
+              id: String(order.id).padStart(6, "0"),
               status: order.status,
               total: `₱${Number(order.total).toFixed(2)}`,
               created_at: new Date(order.created_at).toLocaleString("en-PH", {
