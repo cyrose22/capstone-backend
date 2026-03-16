@@ -1837,6 +1837,20 @@ app.get('/admin/new-orders-count', async (req, res) => {
   }
 });
 
+app.get('/fix-products', async (req, res) => {
+  try {
+    await db.query(`
+      ALTER TABLE products
+      ADD COLUMN IF NOT EXISTS is_active BOOLEAN DEFAULT TRUE
+    `);
+
+    res.json({ message: 'Products table fixed successfully' });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ message: err.message });
+  }
+});
+
 // app.get('/reset-data', async (req, res) => {
 //   try {
 //     await db.query(`
