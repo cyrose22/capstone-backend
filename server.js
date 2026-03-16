@@ -13,12 +13,22 @@ import http from 'http';
 import { Server } from 'socket.io';
 import pkg from 'pg';
 const { Pool } = pkg;
+import dotenv from 'dotenv';
+dotenv.config();
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
 const SEMAPHORE_API_KEY = process.env.SEMAPHORE_API_KEY;
 const SENDER_ID = process.env.SEMAPHORE_SENDER_ID || 'SMSINFO';
+
+process.on('uncaughtException', (err) => {
+  console.error('UNCAUGHT EXCEPTION:', err);
+});
+
+process.on('unhandledRejection', (reason) => {
+  console.error('UNHANDLED REJECTION:', reason);
+});
 
 // SMS
 async function sendSms(to, message) {
@@ -186,8 +196,11 @@ async function sendForgotPasswordEmail(to, otp) {
   });
 }
 
-async function createNotification({ userId, saleId, status, message }) {
-  await db.query(
+async function createNotification(
+  { userId, saleId, status, message },
+  client = db
+) {
+  await client.query(
     `INSERT INTO notifications (user_id, sale_id, status, message, is_read)
      VALUES ($1, $2, $3, $4, false)`,
     [userId, saleId, status, message]
@@ -788,15 +801,17 @@ app.put('/products/:id', async (req, res) => {
   const { id } = req.params;
   const { name, category, image, variants } = req.body;
 
-  try {
-    await db.query('BEGIN');
+  const client = await db.connect();
 
-    await db.query(
+  try {
+    await client.query('BEGIN');
+
+    await client.query(
       'UPDATE products SET name = $1, category = $2, image = $3 WHERE id = $4',
       [name, category, image || null, id]
     );
 
-    const existingVariantsResult = await db.query(
+    const existingVariantsResult = await client.query(
       'SELECT id FROM product_variants WHERE product_id = $1',
       [id]
     );
@@ -812,7 +827,7 @@ app.put('/products/:id', async (req, res) => {
         const variantImage = v.images?.[0] || null;
 
         if (v.id) {
-          await db.query(
+          await client.query(
             `UPDATE product_variants
              SET variant_name = $1, price = $2, quantity = $3, image = $4
              WHERE id = $5`,
@@ -820,7 +835,7 @@ app.put('/products/:id', async (req, res) => {
           );
           sentIds.push(v.id);
         } else {
-          const insertResult = await db.query(
+          const insertResult = await client.query(
             `INSERT INTO product_variants
              (product_id, variant_name, price, quantity, image)
              VALUES ($1, $2, $3, $4, $5)
@@ -835,7 +850,7 @@ app.put('/products/:id', async (req, res) => {
     const idsToDelete = existingIds.filter(eid => !sentIds.includes(eid));
 
     if (idsToDelete.length > 0) {
-      const usedVariants = await db.query(
+      const usedVariants = await client.query(
         `SELECT DISTINCT variant_id
          FROM sale_items
          WHERE variant_id = ANY($1::int[])`,
@@ -843,25 +858,27 @@ app.put('/products/:id', async (req, res) => {
       );
 
       if (usedVariants.rows.length > 0) {
-        await db.query('ROLLBACK');
+        await client.query('ROLLBACK');
         return res.status(400).json({
           message: 'Cannot remove one or more variants because they already exist in sales history'
         });
       }
 
-      await db.query(
+      await client.query(
         `DELETE FROM product_variants WHERE id = ANY($1::int[])`,
         [idsToDelete]
       );
     }
 
-    await db.query('COMMIT');
+    await client.query('COMMIT');
     res.json({ message: 'Product updated successfully' });
 
   } catch (err) {
-    await db.query('ROLLBACK');
+    await client.query('ROLLBACK');
     console.error('UPDATE PRODUCT ERROR:', err);
     res.status(500).json({ message: err.message || 'Failed to update product' });
+  } finally {
+    client.release();
   }
 });
 
@@ -899,8 +916,10 @@ app.post('/sales', async (req, res) => {
     payment_method,
   } = req.body;
 
+  const client = await db.connect();
+
   try {
-    await db.query('BEGIN');
+    await client.query('BEGIN');
 
     if (!Array.isArray(items) || items.length === 0) {
       throw new Error('No items provided');
@@ -914,19 +933,11 @@ app.post('/sales', async (req, res) => {
       const variantId = Number(i.variantId);
       const qty = Number(i.quantity || 0);
 
-      if (!productId) {
-        throw new Error('Missing productId');
-      }
+      if (!productId) throw new Error('Missing productId');
+      if (!variantId) throw new Error(`Missing variantId for product ${productId}`);
+      if (!qty || qty < 1) throw new Error(`Invalid quantity for product ${productId}`);
 
-      if (!variantId) {
-        throw new Error(`Missing variantId for product ${productId}`);
-      }
-
-      if (!qty || qty < 1) {
-        throw new Error(`Invalid quantity for product ${productId}`);
-      }
-
-      const variantCheck = await db.query(
+      const variantCheck = await client.query(
         `SELECT id, product_id, variant_name, image, quantity, price
          FROM product_variants
          WHERE id = $1 AND product_id = $2`,
@@ -957,43 +968,30 @@ app.post('/sales', async (req, res) => {
       });
     }
 
-    const saleResult = await db.query(
-      `INSERT INTO sales 
-        (user_id, total, status, customer_name, contact, payment_method) 
-       VALUES ($1,$2,$3,$4,$5,$6)
+    const saleResult = await client.query(
+      `INSERT INTO sales
+       (user_id, total, status, customer_name, contact, payment_method)
+       VALUES ($1, $2, $3, $4, $5, $6)
        RETURNING id`,
       [userId, total, status, customer_name, contact, payment_method]
     );
 
     const saleId = saleResult.rows[0].id;
+    const orderNumber = String(saleId).padStart(6, '0');
 
-    const orderNumber = String(saleId).padStart(6, "0");
-
-    await createNotification({
-      userId,
-      saleId,
-      status: 'processing',
-      message: `Order #${orderNumber} has been placed successfully and is now being processed.`,
-    });
-
-    const newOrderMessage = `New order #${saleId} received and is now processing.`;
-
-    io.to('admins').emit('new-order', {
-      saleId,
-      status: 'processing',
-      message: newOrderMessage,
-      createdAt: new Date().toISOString(),
-    });
-
-    io.to(`user:${userId}`).emit('user-notification', {
-      saleId,
-      status: 'processing',
-      message: `Order #${orderNumber} has been placed successfully and is now being processed.`,
-      createdAt: new Date().toISOString(),
-    });
+    await client.query(
+      `INSERT INTO notifications (user_id, sale_id, status, message, is_read)
+       VALUES ($1, $2, $3, $4, false)`,
+      [
+        userId,
+        saleId,
+        'processing',
+        `Order #${orderNumber} has been placed successfully and is now being processed.`,
+      ]
+    );
 
     for (const item of validatedItems) {
-      await db.query(
+      await client.query(
         `INSERT INTO sale_items
          (sale_id, product_id, variant_id, quantity, price, variant_name, variant_image)
          VALUES ($1, $2, $3, $4, $5, $6, $7)`,
@@ -1008,7 +1006,7 @@ app.post('/sales', async (req, res) => {
         ]
       );
 
-      await db.query(
+      await client.query(
         `UPDATE product_variants
          SET quantity = quantity - $1
          WHERE id = $2`,
@@ -1016,13 +1014,29 @@ app.post('/sales', async (req, res) => {
       );
     }
 
-    await db.query('COMMIT');
-    res.json({ message: 'Sale completed', saleId });
+    await client.query('COMMIT');
 
+    io.to('admins').emit('new-order', {
+      saleId,
+      status: 'processing',
+      message: `New order #${saleId} received and is now processing.`,
+      createdAt: new Date().toISOString(),
+    });
+
+    io.to(`user:${userId}`).emit('user-notification', {
+      saleId,
+      status: 'processing',
+      message: `Order #${orderNumber} has been placed successfully and is now being processed.`,
+      createdAt: new Date().toISOString(),
+    });
+
+    res.json({ message: 'Sale completed', saleId });
   } catch (err) {
-    await db.query('ROLLBACK');
+    await client.query('ROLLBACK');
     console.error(err);
     res.status(500).json({ message: err.message || 'Error creating sale' });
+  } finally {
+    client.release();
   }
 });
 
@@ -1124,16 +1138,18 @@ app.put('/sales/:id/status', async (req, res) => {
   const { id } = req.params;
   const { status, reason = null, cancelled_by = null } = req.body;
 
-  try {
-    await db.query('BEGIN');
+  const client = await db.connect();
 
-    const saleResult = await db.query(
+  try {
+    await client.query('BEGIN');
+
+    const saleResult = await client.query(
       'SELECT id, user_id, status FROM sales WHERE id = $1',
       [id]
     );
 
     if (saleResult.rows.length === 0) {
-      await db.query('ROLLBACK');
+      await client.query('ROLLBACK');
       return res.status(404).json({ message: 'Sale not found' });
     }
 
@@ -1142,7 +1158,7 @@ app.put('/sales/:id/status', async (req, res) => {
     const newStatus = (status || '').toLowerCase();
 
     if (newStatus === 'cancelled' && oldStatus !== 'cancelled') {
-      const itemsResult = await db.query(
+      const itemsResult = await client.query(
         `SELECT product_id, variant_id, quantity
          FROM sale_items
          WHERE sale_id = $1`,
@@ -1151,14 +1167,14 @@ app.put('/sales/:id/status', async (req, res) => {
 
       for (const item of itemsResult.rows) {
         if (item.variant_id) {
-          await db.query(
+          await client.query(
             `UPDATE product_variants
              SET quantity = quantity + $1
              WHERE id = $2`,
             [item.quantity, item.variant_id]
           );
         } else {
-          await db.query(
+          await client.query(
             `UPDATE products
              SET quantity = quantity + $1
              WHERE id = $2`,
@@ -1169,7 +1185,7 @@ app.put('/sales/:id/status', async (req, res) => {
     }
 
     if (reason) {
-      await db.query(
+      await client.query(
         `UPDATE sales
          SET status = $1,
              cancel_description = $2,
@@ -1178,7 +1194,7 @@ app.put('/sales/:id/status', async (req, res) => {
         [status, reason, cancelled_by, id]
       );
     } else {
-      await db.query(
+      await client.query(
         `UPDATE sales
          SET status = $1
          WHERE id = $2`,
@@ -1200,12 +1216,17 @@ app.put('/sales/:id/status', async (req, res) => {
       message = `Order #${id} status changed to ${status}.`;
     }
 
-    await createNotification({
-      userId: sale.user_id,
-      saleId: sale.id,
-      status,
-      message
-    });
+    await createNotification(
+      {
+        userId: sale.user_id,
+        saleId: sale.id,
+        status,
+        message
+      },
+      client
+    );
+
+    await client.query('COMMIT');
 
     io.to(`user:${sale.user_id}`).emit('user-notification', {
       saleId: sale.id,
@@ -1221,13 +1242,14 @@ app.put('/sales/:id/status', async (req, res) => {
       createdAt: new Date().toISOString(),
     });
 
-    await db.query('COMMIT');
     res.json({ message: 'Status updated successfully' });
 
   } catch (err) {
-    await db.query('ROLLBACK');
+    await client.query('ROLLBACK');
     console.error(err);
     res.status(500).json({ message: 'Failed to update status' });
+  } finally {
+    client.release();
   }
 });
 
@@ -1902,35 +1924,50 @@ app.get('/fix-products', async (req, res) => {
 
 // STARTUP
 async function startServer() {
-  try {
-    await db.query(`
-      CREATE TABLE IF NOT EXISTS notifications (
-        id SERIAL PRIMARY KEY,
-        user_id INTEGER REFERENCES users(id) ON DELETE CASCADE,
-        sale_id INTEGER REFERENCES sales(id) ON DELETE CASCADE,
-        status TEXT,
-        message TEXT NOT NULL,
-        is_read BOOLEAN DEFAULT FALSE,
-        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-      );
-    `);
+  const PORT = process.env.PORT || 10000;
 
-    await db.query(`
-      CREATE TABLE IF NOT EXISTS qr_codes (
-        id SERIAL PRIMARY KEY,
-        url TEXT NOT NULL,
-        uploaded_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-      );
-    `);
+  server.listen(PORT, '0.0.0.0', () => {
+    console.log(`🚀 Server running on port ${PORT}`);
+  });
 
-    const PORT = process.env.PORT || 5000;
-    server.listen(PORT, () => {
-      console.log(`🚀 Server running on port ${PORT}`);
-    });
-  } catch (err) {
-    console.error('Startup failed:', err);
-    process.exit(1);
+  for (let attempt = 1; attempt <= 12; attempt++) {
+    try {
+      await db.query(`
+        CREATE TABLE IF NOT EXISTS notifications (
+          id SERIAL PRIMARY KEY,
+          user_id INTEGER REFERENCES users(id) ON DELETE CASCADE,
+          sale_id INTEGER REFERENCES sales(id) ON DELETE CASCADE,
+          status TEXT,
+          message TEXT NOT NULL,
+          is_read BOOLEAN DEFAULT FALSE,
+          created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        );
+      `);
+
+      await db.query(`
+        CREATE TABLE IF NOT EXISTS qr_codes (
+          id SERIAL PRIMARY KEY,
+          url TEXT NOT NULL,
+          uploaded_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        );
+      `);
+
+      console.log('✅ Startup database checks completed');
+      return;
+    } catch (err) {
+      console.error(
+        `Startup DB attempt ${attempt}/12 failed:`,
+        err.code,
+        err.message
+      );
+
+      if (attempt < 12) {
+        await new Promise((resolve) => setTimeout(resolve, 5000));
+      }
+    }
   }
+
+  console.error('⚠️ Database never became ready, but server is still running');
 }
 
 startServer();
