@@ -850,6 +850,21 @@ app.delete('/products/:id', async (req, res) => {
   try {
     await db.query('BEGIN');
 
+    const usedInSales = await db.query(
+      `SELECT 1
+       FROM sale_items
+       WHERE product_id = $1
+       LIMIT 1`,
+      [id]
+    );
+
+    if (usedInSales.rows.length > 0) {
+      await db.query('ROLLBACK');
+      return res.status(400).json({
+        message: 'Cannot delete product because it already exists in sales history'
+      });
+    }
+
     await db.query(
       'DELETE FROM product_variants WHERE product_id = $1',
       [id]
@@ -870,8 +885,8 @@ app.delete('/products/:id', async (req, res) => {
 
   } catch (err) {
     await db.query('ROLLBACK');
-    console.error(err);
-    res.status(500).json({ message: 'Failed to delete product' });
+    console.error('DELETE PRODUCT ERROR:', err);
+    res.status(500).json({ message: err.message || 'Failed to delete product' });
   }
 });
 
