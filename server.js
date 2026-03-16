@@ -739,6 +739,7 @@ app.get('/products', async (req, res) => {
         p.name AS product_name,
         p.category,
         p.image AS product_image,
+        p.is_active,
         v.id AS variant_id,
         v.variant_name,
         v.price,
@@ -746,6 +747,8 @@ app.get('/products', async (req, res) => {
         v.image AS variant_image
       FROM products p
       LEFT JOIN product_variants v ON p.id = v.product_id
+      WHERE p.is_active = true
+      ORDER BY p.id DESC
     `);
 
     const rows = result.rows;
@@ -758,6 +761,7 @@ app.get('/products', async (req, res) => {
           name: row.product_name,
           category: row.category,
           image: row.product_image,
+          is_active: row.is_active,
           variants: []
         };
       }
@@ -774,7 +778,6 @@ app.get('/products', async (req, res) => {
     });
 
     res.json(Object.values(productsMap));
-
   } catch (err) {
     console.error(err);
     res.status(500).json({ message: 'Failed to fetch products' });
@@ -786,6 +789,8 @@ app.put('/products/:id', async (req, res) => {
   const { name, category, image, variants } = req.body;
 
   try {
+    await db.query('BEGIN');
+
     await db.query(
       'UPDATE products SET name = $1, category = $2, image = $3 WHERE id = $4',
       [name, category, image || null, id]
@@ -808,7 +813,7 @@ app.put('/products/:id', async (req, res) => {
 
         if (v.id) {
           await db.query(
-            `UPDATE product_variants 
+            `UPDATE product_variants
              SET variant_name = $1, price = $2, quantity = $3, image = $4
              WHERE id = $5`,
             [variantName, price, qty, variantImage, v.id]
@@ -818,7 +823,7 @@ app.put('/products/:id', async (req, res) => {
           const insertResult = await db.query(
             `INSERT INTO product_variants
              (product_id, variant_name, price, quantity, image)
-             VALUES ($1,$2,$3,$4,$5)
+             VALUES ($1, $2, $3, $4, $5)
              RETURNING id`,
             [id, variantName, price, qty, variantImage]
           );
@@ -830,17 +835,33 @@ app.put('/products/:id', async (req, res) => {
     const idsToDelete = existingIds.filter(eid => !sentIds.includes(eid));
 
     if (idsToDelete.length > 0) {
+      const usedVariants = await db.query(
+        `SELECT DISTINCT variant_id
+         FROM sale_items
+         WHERE variant_id = ANY($1::int[])`,
+        [idsToDelete]
+      );
+
+      if (usedVariants.rows.length > 0) {
+        await db.query('ROLLBACK');
+        return res.status(400).json({
+          message: 'Cannot remove one or more variants because they already exist in sales history'
+        });
+      }
+
       await db.query(
         `DELETE FROM product_variants WHERE id = ANY($1::int[])`,
         [idsToDelete]
       );
     }
 
+    await db.query('COMMIT');
     res.json({ message: 'Product updated successfully' });
 
   } catch (err) {
+    await db.query('ROLLBACK');
     console.error('UPDATE PRODUCT ERROR:', err);
-    res.status(500).json({ message: 'Failed to update product' });
+    res.status(500).json({ message: err.message || 'Failed to update product' });
   }
 });
 
@@ -848,45 +869,22 @@ app.delete('/products/:id', async (req, res) => {
   const { id } = req.params;
 
   try {
-    await db.query('BEGIN');
-
-    const usedInSales = await db.query(
-      `SELECT 1
-       FROM sale_items
-       WHERE product_id = $1
-       LIMIT 1`,
-      [id]
-    );
-
-    if (usedInSales.rows.length > 0) {
-      await db.query('ROLLBACK');
-      return res.status(400).json({
-        message: 'Cannot delete product because it already exists in sales history'
-      });
-    }
-
-    await db.query(
-      'DELETE FROM product_variants WHERE product_id = $1',
-      [id]
-    );
-
     const result = await db.query(
-      'DELETE FROM products WHERE id = $1 RETURNING id',
+      `UPDATE products
+       SET is_active = false
+       WHERE id = $1
+       RETURNING id`,
       [id]
     );
-
-    await db.query('COMMIT');
 
     if (result.rowCount === 0) {
       return res.status(404).json({ message: 'Product not found' });
     }
 
-    res.json({ message: 'Product deleted successfully' });
-
+    res.json({ message: 'Product archived successfully' });
   } catch (err) {
-    await db.query('ROLLBACK');
-    console.error('DELETE PRODUCT ERROR:', err);
-    res.status(500).json({ message: err.message || 'Failed to delete product' });
+    console.error('ARCHIVE PRODUCT ERROR:', err);
+    res.status(500).json({ message: err.message || 'Failed to archive product' });
   }
 });
 
@@ -1460,6 +1458,7 @@ app.post('/chatbot', async (req, res) => {
           MIN(pv.price) AS price
         FROM products p
         LEFT JOIN product_variants pv ON pv.product_id = p.id
+        WHERE p.is_active = true
         GROUP BY p.id, p.name, p.category, p.image
         ORDER BY p.name ASC
         LIMIT 6
@@ -1701,6 +1700,11 @@ app.get('/init-db', async (req, res) => {
         category TEXT,
         image TEXT
       );
+    `);
+
+    await db.query(`
+      ALTER TABLE products
+      ADD COLUMN IF NOT EXISTS is_active BOOLEAN DEFAULT TRUE
     `);
 
     await db.query(`
