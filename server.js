@@ -1922,26 +1922,26 @@ app.get('/fix-products', async (req, res) => {
 //   }
 // });
 
-app.get('/delete-sale/:id', async (req, res) => {
-  const { id } = req.params;
-  const client = await db.connect();
+// app.get('/delete-sale/:id', async (req, res) => {
+//   const { id } = req.params;
+//   const client = await db.connect();
 
-  try {
-    await client.query('BEGIN');
-    await client.query('DELETE FROM sale_items WHERE sale_id = $1', [id]);
-    await client.query('DELETE FROM notifications WHERE sale_id = $1', [id]);
-    await client.query('DELETE FROM sales WHERE id = $1', [id]);
-    await client.query('COMMIT');
+//   try {
+//     await client.query('BEGIN');
+//     await client.query('DELETE FROM sale_items WHERE sale_id = $1', [id]);
+//     await client.query('DELETE FROM notifications WHERE sale_id = $1', [id]);
+//     await client.query('DELETE FROM sales WHERE id = $1', [id]);
+//     await client.query('COMMIT');
 
-    res.send(`Sale ${id} deleted successfully`);
-  } catch (err) {
-    await client.query('ROLLBACK');
-    console.error(err);
-    res.status(500).send('Failed to delete sale');
-  } finally {
-    client.release();
-  }
-});
+//     res.send(`Sale ${id} deleted successfully`);
+//   } catch (err) {
+//     await client.query('ROLLBACK');
+//     console.error(err);
+//     res.status(500).send('Failed to delete sale');
+//   } finally {
+//     client.release();
+//   }
+// });
 
 // STARTUP
 async function startServer() {
