@@ -1922,6 +1922,27 @@ app.get('/fix-products', async (req, res) => {
 //   }
 // });
 
+app.delete('/sales/:id', async (req, res) => {
+  const { id } = req.params;
+  const client = await db.connect();
+
+  try {
+    await client.query('BEGIN');
+
+    await client.query('DELETE FROM sale_items WHERE sale_id = $1', [id]);
+    await client.query('DELETE FROM notifications WHERE sale_id = $1', [id]);
+    await client.query('DELETE FROM sales WHERE id = $1', [id]);
+
+    await client.query('COMMIT');
+    res.json({ message: 'Sale removed successfully' });
+  } catch (err) {
+    await client.query('ROLLBACK');
+    res.status(500).json({ message: 'Failed to delete sale' });
+  } finally {
+    client.release();
+  }
+});
+
 // STARTUP
 async function startServer() {
   const PORT = process.env.PORT || 10000;
